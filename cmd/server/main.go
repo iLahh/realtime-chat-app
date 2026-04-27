@@ -60,9 +60,20 @@ func newServerMux(chatHandler *api.ChatHandler, userHandler *api.UserHandler) *h
 }
 
 func buildAIService() *service.GeminiService {
-	// Backward-compatible: new keys first, old keys as fallback.
-	apiKey := getEnv("AI_API_KEY", getEnv("GEMINI_API_KEY", ""))
-	model := getEnv("AI_MODEL", getEnv("GEMINI_MODEL", ""))
+	// Backward-compatible: prioritize new generic names, then provider-specific names.
+	apiKey := firstNonEmptyEnv(
+		"AI_API_KEY",
+		"OPENROUTER_API_KEY",
+		"GEMINI_API_KEY",
+	)
+	model := firstNonEmptyEnv(
+		"AI_MODEL",
+		"OPENROUTER_MODEL",
+		"GEMINI_MODEL",
+	)
+	if apiKey == "" {
+		log.Println("warning: AI API key is empty; @ai replies will be unavailable")
+	}
 	return service.NewGeminiService(apiKey, model)
 }
 
@@ -72,6 +83,15 @@ func getEnv(key, fallback string) string {
 		return fallback
 	}
 	return value
+}
+
+func firstNonEmptyEnv(keys ...string) string {
+	for _, key := range keys {
+		if value := strings.TrimSpace(os.Getenv(key)); value != "" {
+			return value
+		}
+	}
+	return ""
 }
 
 func disableCache(w http.ResponseWriter) {

@@ -1,6 +1,7 @@
 (function () {
   const RECONNECT_DELAY_MS = 1500;
   const TYPING_IDLE_MS = 1200;
+  const MAX_UPLOAD_BYTES = 10 * 1024 * 1024;
 
   const roomGate = document.getElementById("roomGate");
   const chatApp = document.getElementById("chatApp");
@@ -359,6 +360,11 @@
       return;
     }
 
+    if (current.file.size > MAX_UPLOAD_BYTES) {
+      setStatus("Ukuran file maksimal 10MB.");
+      return;
+    }
+
     try {
       if (sendButton) {
         sendButton.disabled = true;
@@ -376,6 +382,7 @@
       resetComposer(state.currentRoomID);
     } catch (error) {
       setStatus(error.message || "Gagal kirim file");
+      console.error("Upload failed:", error);
     } finally {
       if (sendButton) {
         sendButton.disabled = false;

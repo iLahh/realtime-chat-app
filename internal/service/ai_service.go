@@ -195,8 +195,9 @@ func (s *GeminiService) generateViaOpenRouter(ctx context.Context, prompt string
 	}
 
 	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Accept", "application/json")
 	req.Header.Set("Authorization", "Bearer "+s.apiKey)
-	req.Header.Set("HTTP-Referer", "http://localhost:8080")
+	req.Header.Set("HTTP-Referer", "https://ilahh.github.io/realtime-chat-app/")
 	req.Header.Set("X-Title", "realtime-chat-app")
 
 	resp, err := s.client.Do(req)
