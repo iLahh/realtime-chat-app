@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/joho/godotenv"
 	"github.com/yourname/chat-app-golang/internal/api"
@@ -26,7 +27,7 @@ func main() {
 	serverMux := newServerMux(chatHandler, userHandler)
 
 	log.Printf("server started on :%s", port)
-	if err := http.ListenAndServe(":"+port, serverMux); err != nil {
+	if err := http.ListenAndServe(":"+port, withCORS(serverMux)); err != nil {
 		log.Fatal(err)
 	}
 }
@@ -77,4 +78,44 @@ func disableCache(w http.ResponseWriter) {
 	w.Header().Set("Cache-Control", "no-store, no-cache, must-revalidate")
 	w.Header().Set("Pragma", "no-cache")
 	w.Header().Set("Expires", "0")
+}
+
+func withCORS(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		applyCORSHeaders(w, r)
+		if r.Method == http.MethodOptions {
+			w.WriteHeader(http.StatusNoContent)
+			return
+		}
+		next.ServeHTTP(w, r)
+	})
+}
+
+func applyCORSHeaders(w http.ResponseWriter, r *http.Request) {
+	origin := strings.TrimSpace(r.Header.Get("Origin"))
+	if origin != "" && isAllowedOrigin(origin) {
+		w.Header().Set("Access-Control-Allow-Origin", origin)
+		w.Header().Set("Vary", "Origin")
+	}
+	w.Header().Set("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+	w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization")
+}
+
+func isAllowedOrigin(origin string) bool {
+	allowed := []string{
+		"https://ilahh.github.io",
+		"http://localhost:3000",
+		"http://127.0.0.1:3000",
+	}
+	customOrigin := strings.TrimSpace(os.Getenv("FRONTEND_ORIGIN"))
+	if customOrigin != "" {
+		allowed = append(allowed, customOrigin)
+	}
+
+	for _, candidate := range allowed {
+		if origin == candidate {
+			return true
+		}
+	}
+	return false
 }
