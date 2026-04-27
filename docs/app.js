@@ -1,7 +1,7 @@
 (function () {
-  // ========================
-  // 1) Grab UI elements
-  // ========================
+  const RECONNECT_DELAY_MS = 1500;
+  const TYPING_IDLE_MS = 1200;
+
   const roomGate = document.getElementById("roomGate");
   const chatApp = document.getElementById("chatApp");
   const joinForm = document.getElementById("joinForm");
@@ -28,12 +28,10 @@
     return;
   }
 
-  // ========================
-  // 2) App state
-  // ========================
+  const configuredBackendBase = sanitizeBaseURL(window.BACKEND_BASE_URL);
   const localWSProtocol = window.location.protocol === "https:" ? "wss" : "ws";
-  const configuredBackendBase = String(window.BACKEND_BASE_URL || "").trim().replace(/\/+$/, "");
   const apiBaseURL = configuredBackendBase || window.location.origin;
+
   const userID = "u-" + Math.random().toString(36).slice(2, 8);
   const username = "User-" + userID.slice(-4);
 
@@ -46,22 +44,30 @@
     typingSent: false,
   };
 
-  // ========================
-  // 3) Simple UI helpers
-  // ========================
+  function sanitizeBaseURL(value) {
+    return String(value || "").trim().replace(/\/+$/, "");
+  }
+
   function safelySetText(element, text) {
-    if (!element) {
-      return;
+    if (element) {
+      element.textContent = text;
     }
-    element.textContent = text;
   }
 
   function setGateStatus(text) {
     safelySetText(gateStatus, text);
   }
 
+  function getConnectedStatusText(roomID) {
+    return "Terhubung sebagai " + username + " di #" + roomID;
+  }
+
   function setStatus(text) {
     safelySetText(statusText, text);
+  }
+
+  function setConnectedStatus(roomID) {
+    setStatus(getConnectedStatusText(roomID));
   }
 
   function setRoomUI(roomID) {
@@ -69,13 +75,12 @@
     activeRoomText.textContent = "#" + roomID;
   }
 
-  function scrollChatToBottom() {
-    chatBody.scrollTop = chatBody.scrollHeight;
+  function hideEmptyState() {
+    if (emptyState) {
+      emptyState.style.display = "none";
+    }
   }
 
-  // ========================
-  // 4) Render helpers
-  // ========================
   function clearChat() {
     chatBody.querySelectorAll(".bubble").forEach((node) => node.remove());
     if (emptyState) {
@@ -91,11 +96,16 @@
       onlineUsers.appendChild(li);
       return;
     }
+
     users.forEach((name) => {
       const li = document.createElement("li");
       li.textContent = name;
       onlineUsers.appendChild(li);
     });
+  }
+
+  function scrollChatToBottom() {
+    chatBody.scrollTop = chatBody.scrollHeight;
   }
 
   function getWSBaseURL() {
@@ -126,7 +136,7 @@
     return buildAPIURL(fileURL.startsWith("/") ? fileURL : "/" + fileURL);
   }
 
-  function wsURL(roomID) {
+  function buildWSURL(roomID) {
     const wsBase = getWSBaseURL();
     return (
       wsBase +
@@ -136,18 +146,13 @@
     );
   }
 
-  function hideEmptyState() {
-    if (emptyState) {
-      emptyState.style.display = "none";
-    }
-  }
-
   function isImage(url) {
     return /\.(jpg|jpeg|png|gif|webp|bmp|svg)(\?|$)/i.test(url || "");
   }
 
   function appendMessage(name, content, fileURL, fileName, mine) {
     hideEmptyState();
+
     const wrap = document.createElement("article");
     wrap.className = "bubble " + (mine ? "bubble-me" : "bubble-other");
 
@@ -170,13 +175,13 @@
         img.alt = fileName || "file";
         wrap.appendChild(img);
       } else {
-        const a = document.createElement("a");
-        a.className = "file-link";
-        a.href = absoluteFileURL;
-        a.target = "_blank";
-        a.rel = "noopener noreferrer";
-        a.textContent = "Download file: " + (fileName || "attachment");
-        wrap.appendChild(a);
+        const fileLink = document.createElement("a");
+        fileLink.className = "file-link";
+        fileLink.href = absoluteFileURL;
+        fileLink.target = "_blank";
+        fileLink.rel = "noopener noreferrer";
+        fileLink.textContent = "Download file: " + (fileName || "attachment");
+        wrap.appendChild(fileLink);
       }
     }
 
@@ -184,19 +189,18 @@
     scrollChatToBottom();
   }
 
-  function appendSystem(text) {
+  function appendSystemMessage(text) {
     hideEmptyState();
+
     const wrap = document.createElement("article");
     wrap.className = "bubble bubble-system";
     wrap.innerHTML = '<p class="meta">System</p><p></p>';
     wrap.querySelectorAll("p")[1].textContent = text;
+
     chatBody.appendChild(wrap);
     scrollChatToBottom();
   }
 
-  // ========================
-  // 5) WebSocket helpers
-  // ========================
   function closeSocket() {
     if (!state.socket) {
       return;
@@ -205,9 +209,56 @@
       state.allowReconnect = false;
       state.socket.close();
     } catch (_) {
-      // ignore
+      // Ignore close errors.
     }
     state.socket = null;
+  }
+
+  function resetReconnectTimer() {
+    if (!state.reconnectTimer) {
+      return;
+    }
+    clearTimeout(state.reconnectTimer);
+    state.reconnectTimer = null;
+  }
+
+  function scheduleReconnect() {
+    setStatus("Koneksi terputus, mencoba ulang...");
+    state.reconnectTimer = setTimeout(function () {
+      connectRoom(state.currentRoomID);
+    }, RECONNECT_DELAY_MS);
+  }
+
+  function handleIncomingPayload(payload, roomID) {
+    switch (payload.type) {
+      case "message":
+        appendMessage(
+          payload.username || "Unknown",
+          payload.content || "",
+          payload.file_url || "",
+          payload.file_name || "",
+          payload.user_id === userID
+        );
+        break;
+      case "system":
+        appendSystemMessage(payload.content || "System event");
+        break;
+      case "online_users":
+        setUsers(payload.online_users || []);
+        break;
+      case "typing":
+        if (payload.user_id !== userID && payload.typing) {
+          setStatus((payload.username || "Seseorang") + " sedang mengetik...");
+        } else if (payload.user_id !== userID) {
+          setConnectedStatus(roomID);
+        }
+        break;
+      case "error":
+        setStatus(payload.content || "Server error");
+        break;
+      default:
+        break;
+    }
   }
 
   function connectRoom(roomID) {
@@ -215,66 +266,30 @@
       return;
     }
 
-    if (state.reconnectTimer) {
-      clearTimeout(state.reconnectTimer);
-      state.reconnectTimer = null;
-    }
-
+    resetReconnectTimer();
     closeSocket();
     state.allowReconnect = true;
 
     setStatus("Menyambungkan...");
-    state.socket = new WebSocket(wsURL(roomID));
+    state.socket = new WebSocket(buildWSURL(roomID));
 
     state.socket.onopen = function () {
-      setStatus("Terhubung sebagai " + username + " di #" + roomID);
+      setConnectedStatus(roomID);
     };
 
     state.socket.onmessage = function (event) {
       try {
         const payload = JSON.parse(event.data);
-        switch (payload.type) {
-          case "message":
-            appendMessage(
-              payload.username || "Unknown",
-              payload.content || "",
-              payload.file_url || "",
-              payload.file_name || "",
-              payload.user_id === userID
-            );
-            break;
-          case "system":
-            appendSystem(payload.content || "System event");
-            break;
-          case "online_users":
-            setUsers(payload.online_users || []);
-            break;
-          case "typing":
-            if (payload.user_id !== userID && payload.typing) {
-              setStatus((payload.username || "Seseorang") + " sedang mengetik...");
-            } else if (payload.user_id !== userID) {
-              setStatus("Terhubung sebagai " + username + " di #" + roomID);
-            }
-            break;
-          case "error":
-            setStatus(payload.content || "Server error");
-            break;
-          default:
-            break;
-        }
+        handleIncomingPayload(payload, roomID);
       } catch (_) {
         setStatus("Format pesan tidak valid");
       }
     };
 
     state.socket.onclose = function () {
-      if (!state.allowReconnect) {
-        return;
+      if (state.allowReconnect) {
+        scheduleReconnect();
       }
-      setStatus("Koneksi terputus, mencoba ulang...");
-      state.reconnectTimer = setTimeout(function () {
-        connectRoom(state.currentRoomID);
-      }, 1500);
     };
 
     state.socket.onerror = function () {
@@ -289,66 +304,83 @@
     state.socket.send(JSON.stringify({ type: "typing", typing: value }));
   }
 
-  // ========================
-  // 6) Send message/file
-  // ========================
-  async function sendCurrentInput() {
-    if (!state.socket || state.socket.readyState !== WebSocket.OPEN) {
-      setStatus("Belum terhubung ke room");
-      return;
-    }
+  function readCurrentInput() {
+    return {
+      text: messageInput ? messageInput.value.trim() : "",
+      file: fileInput && fileInput.files ? fileInput.files[0] : null,
+    };
+  }
 
-    const text = messageInput ? messageInput.value.trim() : "";
-    const file = fileInput && fileInput.files ? fileInput.files[0] : null;
-
-    if (!text && !file) {
-      setStatus("Tulis pesan atau pilih file terlebih dahulu");
-      return;
-    }
-
-    if (file) {
-      if (sendButton) {
-        sendButton.disabled = true;
-      }
-      setStatus("Upload file...");
-      try {
-        const formData = new FormData();
-        formData.append("file", file);
-        const resp = await fetch(buildAPIURL("/upload"), { method: "POST", body: formData });
-        if (!resp.ok) {
-          throw new Error("Upload gagal");
-        }
-        const result = await resp.json();
-        const data = result.data || {};
-        if (!data.file_url) {
-          throw new Error("Respons upload tidak valid");
-        }
-
-        state.socket.send(JSON.stringify({
-          type: "message",
-          content: text,
-          file_url: data.file_url,
-          file_name: data.file_name || file.name
-        }));
-      } catch (err) {
-        setStatus(err.message || "Gagal kirim file");
-        return;
-      } finally {
-        if (sendButton) {
-          sendButton.disabled = false;
-        }
-      }
-    } else {
-      state.socket.send(JSON.stringify({ type: "message", content: text }));
-    }
-
+  function resetComposer(roomID) {
     if (messageInput) {
       messageInput.value = "";
     }
     if (fileInput) {
       fileInput.value = "";
     }
-    setStatus("Terhubung sebagai " + username + " di #" + state.currentRoomID);
+    setConnectedStatus(roomID);
+  }
+
+  async function uploadFile(file) {
+    const formData = new FormData();
+    formData.append("file", file);
+
+    const response = await fetch(buildAPIURL("/upload"), {
+      method: "POST",
+      body: formData,
+    });
+    if (!response.ok) {
+      throw new Error("Upload gagal");
+    }
+
+    const result = await response.json();
+    const data = result.data || {};
+    if (!data.file_url) {
+      throw new Error("Respons upload tidak valid");
+    }
+    return data;
+  }
+
+  async function sendCurrentInput() {
+    if (!state.socket || state.socket.readyState !== WebSocket.OPEN) {
+      setStatus("Belum terhubung ke room");
+      return;
+    }
+
+    const current = readCurrentInput();
+    if (!current.text && !current.file) {
+      setStatus("Tulis pesan atau pilih file terlebih dahulu");
+      return;
+    }
+
+    if (!current.file) {
+      state.socket.send(JSON.stringify({ type: "message", content: current.text }));
+      resetComposer(state.currentRoomID);
+      return;
+    }
+
+    try {
+      if (sendButton) {
+        sendButton.disabled = true;
+      }
+      setStatus("Upload file...");
+
+      const uploadedFile = await uploadFile(current.file);
+      state.socket.send(JSON.stringify({
+        type: "message",
+        content: current.text,
+        file_url: uploadedFile.file_url,
+        file_name: uploadedFile.file_name || current.file.name,
+      }));
+
+      resetComposer(state.currentRoomID);
+    } catch (error) {
+      setStatus(error.message || "Gagal kirim file");
+    } finally {
+      if (sendButton) {
+        sendButton.disabled = false;
+      }
+    }
 
     if (state.typingSent) {
       sendTyping(false);
@@ -356,11 +388,9 @@
     }
   }
 
-  // ========================
-  // 7) Room join flow
-  // ========================
   function handleJoin(event) {
     event.preventDefault();
+
     const nextRoom = (roomInput.value || "").trim().toLowerCase();
     if (!nextRoom) {
       setGateStatus("Room ID tidak boleh kosong.");
@@ -369,7 +399,7 @@
     }
 
     state.currentRoomID = nextRoom;
-    setRoomUI(state.currentRoomID);
+    setRoomUI(nextRoom);
     clearChat();
     setUsers([]);
 
@@ -378,34 +408,35 @@
     setStatus("Memasuki room...");
     setGateStatus("Masuk room berhasil.");
 
-    connectRoom(state.currentRoomID);
+    connectRoom(nextRoom);
   }
 
-  // ========================
-  // 8) Wire events
-  // ========================
+  function handleComposerKeydown(event) {
+    if (event.key === "Enter") {
+      sendCurrentInput();
+      return;
+    }
+
+    if (!state.typingSent) {
+      sendTyping(true);
+      state.typingSent = true;
+    }
+
+    if (state.typingTimer) {
+      clearTimeout(state.typingTimer);
+    }
+    state.typingTimer = setTimeout(function () {
+      sendTyping(false);
+      state.typingSent = false;
+    }, TYPING_IDLE_MS);
+  }
+
   joinForm.addEventListener("submit", handleJoin);
   if (sendButton) {
     sendButton.addEventListener("click", sendCurrentInput);
   }
   if (messageInput) {
-    messageInput.addEventListener("keydown", function (event) {
-      if (event.key === "Enter") {
-        sendCurrentInput();
-        return;
-      }
-      if (!state.typingSent) {
-        sendTyping(true);
-        state.typingSent = true;
-      }
-      if (state.typingTimer) {
-        clearTimeout(state.typingTimer);
-      }
-      state.typingTimer = setTimeout(function () {
-        sendTyping(false);
-        state.typingSent = false;
-      }, 1200);
-    });
+    messageInput.addEventListener("keydown", handleComposerKeydown);
   }
 
   setGateStatus("Masukkan room id untuk memulai chat.");

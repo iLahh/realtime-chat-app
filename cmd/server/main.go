@@ -4,6 +4,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"path/filepath"
 
 	"github.com/joho/godotenv"
 	"github.com/yourname/chat-app-golang/internal/api"
@@ -13,7 +14,7 @@ import (
 func main() {
 	_ = godotenv.Load()
 
-	port := getEnv("APP_PORT", "8080")
+	port := getEnv("PORT", getEnv("APP_PORT", "8080"))
 
 	hub := service.NewSocketHub()
 	aiService := buildAIService()
@@ -32,6 +33,8 @@ func main() {
 
 func newServerMux(chatHandler *api.ChatHandler, userHandler *api.UserHandler) *http.ServeMux {
 	mux := http.NewServeMux()
+	docsDir := "docs"
+	docsFS := http.FileServer(http.Dir(docsDir))
 
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != "/" {
@@ -39,16 +42,11 @@ func newServerMux(chatHandler *api.ChatHandler, userHandler *api.UserHandler) *h
 			return
 		}
 		disableCache(w)
-		http.ServeFile(w, r, "index.html")
+		http.ServeFile(w, r, filepath.Join(docsDir, "index.html"))
 	})
-	mux.HandleFunc("/styles.css", func(w http.ResponseWriter, r *http.Request) {
-		disableCache(w)
-		http.ServeFile(w, r, "styles.css")
-	})
-	mux.HandleFunc("/app.js", func(w http.ResponseWriter, r *http.Request) {
-		disableCache(w)
-		http.ServeFile(w, r, "app.js")
-	})
+	// Keep static asset routes explicit so websocket/api routes stay predictable.
+	mux.Handle("/styles.css", docsFS)
+	mux.Handle("/app.js", docsFS)
 	mux.HandleFunc("/health", func(w http.ResponseWriter, _ *http.Request) {
 		_, _ = w.Write([]byte("ok"))
 	})
