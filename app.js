@@ -31,7 +31,9 @@
   // ========================
   // 2) App state
   // ========================
-  const protocol = window.location.protocol === "https:" ? "wss" : "ws";
+  const localWSProtocol = window.location.protocol === "https:" ? "wss" : "ws";
+  const configuredBackendBase = String(window.BACKEND_BASE_URL || "").trim().replace(/\/+$/, "");
+  const apiBaseURL = configuredBackendBase || window.location.origin;
   const userID = "u-" + Math.random().toString(36).slice(2, 8);
   const username = "User-" + userID.slice(-4);
 
@@ -96,9 +98,38 @@
     });
   }
 
+  function getWSBaseURL() {
+    if (!configuredBackendBase) {
+      return localWSProtocol + "://" + window.location.host;
+    }
+
+    try {
+      const parsed = new URL(configuredBackendBase);
+      const wsProtocol = parsed.protocol === "https:" ? "wss:" : "ws:";
+      return wsProtocol + "//" + parsed.host;
+    } catch (_) {
+      return localWSProtocol + "://" + window.location.host;
+    }
+  }
+
+  function buildAPIURL(path) {
+    return apiBaseURL + path;
+  }
+
+  function absolutizeFileURL(fileURL) {
+    if (!fileURL) {
+      return "";
+    }
+    if (/^https?:\/\//i.test(fileURL)) {
+      return fileURL;
+    }
+    return buildAPIURL(fileURL.startsWith("/") ? fileURL : "/" + fileURL);
+  }
+
   function wsURL(roomID) {
+    const wsBase = getWSBaseURL();
     return (
-      protocol + "://" + window.location.host +
+      wsBase +
       "/ws?user_id=" + encodeURIComponent(userID) +
       "&username=" + encodeURIComponent(username) +
       "&room_id=" + encodeURIComponent(roomID)
@@ -112,7 +143,7 @@
   }
 
   function isImage(url) {
-    return /\.(jpg|jpeg|png|gif|webp|bmp|svg)$/i.test(url || "");
+    return /\.(jpg|jpeg|png|gif|webp|bmp|svg)(\?|$)/i.test(url || "");
   }
 
   function appendMessage(name, content, fileURL, fileName, mine) {
@@ -132,15 +163,16 @@
     }
 
     if (fileURL) {
-      if (isImage(fileURL)) {
+      const absoluteFileURL = absolutizeFileURL(fileURL);
+      if (isImage(absoluteFileURL)) {
         const img = document.createElement("img");
-        img.src = fileURL;
+        img.src = absoluteFileURL;
         img.alt = fileName || "file";
         wrap.appendChild(img);
       } else {
         const a = document.createElement("a");
         a.className = "file-link";
-        a.href = fileURL;
+        a.href = absoluteFileURL;
         a.target = "_blank";
         a.rel = "noopener noreferrer";
         a.textContent = "Download file: " + (fileName || "attachment");
@@ -282,7 +314,7 @@
       try {
         const formData = new FormData();
         formData.append("file", file);
-        const resp = await fetch("/upload", { method: "POST", body: formData });
+        const resp = await fetch(buildAPIURL("/upload"), { method: "POST", body: formData });
         if (!resp.ok) {
           throw new Error("Upload gagal");
         }
