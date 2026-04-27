@@ -1,0 +1,66 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Realtime Chat App</title>
+  <link rel="stylesheet" href="/styles.css?v=20260427-3">
+</head>
+<body>
+  <div id="roomGate" class="room-gate">
+    <div class="gate-card">
+      <h1>Realtime Chat</h1>
+      <p>Masukkan ID room yang sama untuk ngobrol bareng.</p>
+      <form id="joinForm" class="room-form">
+        <input id="roomInput" type="text" placeholder="Contoh: tim-a" autocomplete="off" required />
+        <button id="joinRoomButton" type="submit">Masuk Room</button>
+      </form>
+      <p id="gateStatus" class="gate-status">Masukkan room id untuk memulai chat.</p>
+    </div>
+  </div>
+
+  <div id="chatApp" class="app-shell hidden">
+    <aside class="sidebar">
+      <div class="brand">
+        <h1>Chat</h1>
+        <p>Realtime chat</p>
+      </div>
+
+      <div class="card">
+        <h2>Room Aktif</h2>
+        <p id="activeRoomText">#-</p>
+      </div>
+
+      <div class="card">
+        <h2>Online Users</h2>
+        <ul id="onlineUsers" class="user-list">
+        </ul>
+      </div>
+    </aside>
+
+    <main class="chat-panel">
+      <header class="chat-header">
+        <div>
+          <h2 id="roomTitle">Room #-</h2>
+          <p id="statusText">Belum terhubung</p>
+        </div>
+        <span class="badge">Live</span>
+      </header>
+
+      <section class="chat-body" id="chatBody">
+        <div id="emptyState" class="empty-state">
+          <h3>Room siap digunakan</h3>
+          <p>Belum ada pesan. Kirim teks, gambar, atau file untuk mulai percakapan.</p>
+        </div>
+      </section>
+
+      <footer class="chat-input">
+        <input id="messageInput" type="text" placeholder="Tulis pesan..." autocomplete="off" />
+        <input id="fileInput" type="file" />
+        <button id="sendButton" type="button">Kirim</button>
+      </footer>
+    </main>
+  </div>
+  <script src="/app.js?v=20260427-3"></script>
+</body>
+</html>

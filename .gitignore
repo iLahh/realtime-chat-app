@@ -1,0 +1,8 @@
+.env
+/uploads/*
+!/uploads/.gitkeep
+/tmp/
+/bin/
+*.exe
+*.out
+*.log
