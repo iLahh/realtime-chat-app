@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"io"
+	"log"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -142,24 +143,7 @@ func (h *ChatHandler) HandleWebSocket(w http.ResponseWriter, r *http.Request) {
 			})
 
 			if h.chatService.ShouldTriggerAI(msg.Content) {
-				reply, err := h.chatService.AskAI(context.Background(), msg.Content)
-				if err != nil {
-					out <- service.SocketEvent{
-						Type:      "error",
-						Content:   "AI unavailable: " + err.Error(),
-						Timestamp: time.Now().UTC(),
-					}
-					continue
-				}
-
-				h.hub.BroadcastRoom(client.RoomID, service.SocketEvent{
-					Type:      "message",
-					RoomID:    client.RoomID,
-					UserID:    "ai-bot",
-					Username:  "AI Assistant",
-					Content:   reply,
-					Timestamp: time.Now().UTC(),
-				})
+				h.replyAIAsync(client.RoomID, msg.Content)
 			}
 		default:
 			out <- service.SocketEvent{
@@ -169,6 +153,34 @@ func (h *ChatHandler) HandleWebSocket(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 	}
+}
+
+func (h *ChatHandler) replyAIAsync(roomID, content string) {
+	go func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 18*time.Second)
+		defer cancel()
+
+		reply, err := h.chatService.AskAI(ctx, content)
+		if err != nil {
+			log.Printf("ai reply failed for room=%s: %v", roomID, err)
+			h.hub.BroadcastRoom(roomID, service.SocketEvent{
+				Type:      "system",
+				RoomID:    roomID,
+				Content:   "AI sedang sibuk, coba lagi sebentar.",
+				Timestamp: time.Now().UTC(),
+			})
+			return
+		}
+
+		h.hub.BroadcastRoom(roomID, service.SocketEvent{
+			Type:      "message",
+			RoomID:    roomID,
+			UserID:    "ai-bot",
+			Username:  "AI Assistant",
+			Content:   reply,
+			Timestamp: time.Now().UTC(),
+		})
+	}()
 }
 
 func parseWSClientInfo(r *http.Request) wsClientInfo {
