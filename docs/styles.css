@@ -236,10 +236,14 @@ body {
   padding: 0.78rem 0.9rem;
   border-radius: 12px;
   border: 1px solid transparent;
+  overflow-wrap: anywhere;
 }
 
 .bubble p {
   margin: 0;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  word-break: break-word;
 }
 
 .bubble img {
