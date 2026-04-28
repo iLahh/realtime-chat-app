@@ -7,7 +7,6 @@
   const chatApp = document.getElementById("chatApp");
   const joinForm = document.getElementById("joinForm");
   const roomInput = document.getElementById("roomInput");
-  const joinRoomButton = document.getElementById("joinRoomButton");
   const gateStatus = document.getElementById("gateStatus");
 
   const roomTitle = document.getElementById("roomTitle");
@@ -20,10 +19,12 @@
   const messageInput = document.getElementById("messageInput");
   const sendButton = document.getElementById("sendButton");
   const fileInput = document.getElementById("fileInput");
+  const fileNameText = document.getElementById("fileNameText");
 
   if (
-    !roomGate || !chatApp || !joinForm || !roomInput || !joinRoomButton ||
-    !roomTitle || !activeRoomText || !statusText || !chatBody || !onlineUsers
+    !roomGate || !chatApp || !joinForm || !roomInput || !gateStatus ||
+    !roomTitle || !activeRoomText || !statusText || !chatBody || !emptyState ||
+    !onlineUsers || !messageInput || !sendButton || !fileInput || !fileNameText
   ) {
     console.error("UI tidak lengkap. Coba hard refresh (Ctrl+F5).");
     return;
@@ -67,6 +68,13 @@
     safelySetText(statusText, text);
   }
 
+  function setFileNameLabel(file) {
+    if (!fileNameText) {
+      return;
+    }
+    fileNameText.textContent = file ? file.name : "Belum ada file";
+  }
+
   function setConnectedStatus(roomID) {
     setStatus(getConnectedStatusText(roomID));
   }
@@ -77,16 +85,12 @@
   }
 
   function hideEmptyState() {
-    if (emptyState) {
-      emptyState.style.display = "none";
-    }
+    emptyState.style.display = "none";
   }
 
   function clearChat() {
     chatBody.querySelectorAll(".bubble").forEach((node) => node.remove());
-    if (emptyState) {
-      emptyState.style.display = "block";
-    }
+    emptyState.style.display = "block";
   }
 
   function setUsers(users) {
@@ -307,18 +311,15 @@
 
   function readCurrentInput() {
     return {
-      text: messageInput ? messageInput.value.trim() : "",
-      file: fileInput && fileInput.files ? fileInput.files[0] : null,
+      text: messageInput.value.trim(),
+      file: fileInput.files ? fileInput.files[0] : null,
     };
   }
 
   function resetComposer(roomID) {
-    if (messageInput) {
-      messageInput.value = "";
-    }
-    if (fileInput) {
-      fileInput.value = "";
-    }
+    messageInput.value = "";
+    fileInput.value = "";
+    setFileNameLabel(null);
     setConnectedStatus(roomID);
   }
 
@@ -439,12 +440,13 @@
   }
 
   joinForm.addEventListener("submit", handleJoin);
-  if (sendButton) {
-    sendButton.addEventListener("click", sendCurrentInput);
-  }
-  if (messageInput) {
-    messageInput.addEventListener("keydown", handleComposerKeydown);
-  }
+  sendButton.addEventListener("click", sendCurrentInput);
+  messageInput.addEventListener("keydown", handleComposerKeydown);
+  fileInput.addEventListener("change", function () {
+    const selectedFile = fileInput.files && fileInput.files[0] ? fileInput.files[0] : null;
+    setFileNameLabel(selectedFile);
+  });
 
   setGateStatus("Masukkan room id untuk memulai chat.");
+  setFileNameLabel(null);
 })();

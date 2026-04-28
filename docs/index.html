@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Realtime Chat App</title>
-  <link rel="stylesheet" href="./styles.css?v=20260427-3">
+  <link rel="stylesheet" href="./styles.css?v=20260428-1">
 </head>
 <body>
   <script>
@@ -59,11 +59,13 @@
 
       <footer class="chat-input">
         <input id="messageInput" type="text" placeholder="Tulis pesan..." autocomplete="off" />
-        <input id="fileInput" type="file" />
+        <input id="fileInput" class="visually-hidden-file" type="file" />
+        <label for="fileInput" class="file-trigger">Pilih File</label>
+        <span id="fileNameText" class="file-name">Belum ada file</span>
         <button id="sendButton" type="button">Kirim</button>
       </footer>
     </main>
   </div>
-  <script src="./app.js?v=20260427-4"></script>
+  <script src="./app.js?v=20260428-1"></script>
 </body>
 </html>
