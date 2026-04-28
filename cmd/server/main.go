@@ -18,8 +18,8 @@ func main() {
 	port := getEnv("PORT", getEnv("APP_PORT", "8080"))
 
 	hub := service.NewSocketHub()
-	aiService := buildAIService()
-	chatService := service.NewChatService(aiService)
+	openRouterService := buildOpenRouterService()
+	chatService := service.NewChatService(openRouterService)
 
 	chatHandler := api.NewChatHandler(chatService, hub)
 	userHandler := api.NewUserHandler(hub)
@@ -59,22 +59,13 @@ func newServerMux(chatHandler *api.ChatHandler, userHandler *api.UserHandler) *h
 	return mux
 }
 
-func buildAIService() *service.GeminiService {
-	// Backward-compatible: prioritize new generic names, then provider-specific names.
-	apiKey := firstNonEmptyEnv(
-		"AI_API_KEY",
-		"OPENROUTER_API_KEY",
-		"GEMINI_API_KEY",
-	)
-	model := firstNonEmptyEnv(
-		"AI_MODEL",
-		"OPENROUTER_MODEL",
-		"GEMINI_MODEL",
-	)
+func buildOpenRouterService() *service.OpenRouterService {
+	apiKey := firstNonEmptyEnv("OPENROUTER_API_KEY")
+	model := firstNonEmptyEnv("OPENROUTER_MODEL")
 	if apiKey == "" {
-		log.Println("warning: AI API key is empty; @ai replies will be unavailable")
+		log.Println("warning: OpenRouter API key is empty; @ai replies will be unavailable")
 	}
-	return service.NewGeminiService(apiKey, model)
+	return service.NewOpenRouterService(apiKey, model)
 }
 
 func getEnv(key, fallback string) string {

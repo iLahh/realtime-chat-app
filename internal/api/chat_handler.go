@@ -69,7 +69,7 @@ func (h *ChatHandler) HandleWebSocket(w http.ResponseWriter, r *http.Request) {
 		h.hub.BroadcastRoom(client.RoomID, service.SocketEvent{
 			Type:      "system",
 			RoomID:    client.RoomID,
-			Content:   client.Username + " left the room",
+			Content:   client.Username + " telah keluar dari percakapan",
 			Timestamp: time.Now().UTC(),
 		})
 	}()
@@ -162,11 +162,11 @@ func (h *ChatHandler) replyAIAsync(roomID, content string) {
 
 		reply, err := h.chatService.AskAI(ctx, content)
 		if err != nil {
-			log.Printf("ai reply failed for room=%s: %v", roomID, err)
+			log.Printf("assistant reply failed for room=%s: %v", roomID, err)
 			h.hub.BroadcastRoom(roomID, service.SocketEvent{
 				Type:      "system",
 				RoomID:    roomID,
-				Content:   "AI sedang sibuk, coba lagi sebentar.",
+				Content:   "Assistant sedang sibuk, coba lagi sebentar.",
 				Timestamp: time.Now().UTC(),
 			})
 			return
@@ -176,7 +176,7 @@ func (h *ChatHandler) replyAIAsync(roomID, content string) {
 			Type:      "message",
 			RoomID:    roomID,
 			UserID:    "ai-bot",
-			Username:  "AI Assistant",
+			Username:  "OpenRouter Assistant",
 			Content:   reply,
 			Timestamp: time.Now().UTC(),
 		})

@@ -9,12 +9,12 @@ import (
 )
 
 type ChatService struct {
-	aiService AIService
+	assistantService AIService
 }
 
-func NewChatService(aiService AIService) *ChatService {
+func NewChatService(assistantService AIService) *ChatService {
 	return &ChatService{
-		aiService: aiService,
+		assistantService: assistantService,
 	}
 }
 
@@ -30,8 +30,8 @@ func (s *ChatService) ShouldTriggerAI(content string) bool {
 }
 
 func (s *ChatService) AskAI(ctx context.Context, content string) (string, error) {
-	if s.aiService == nil {
-		return "", errors.New("ai service is not configured")
+	if s.assistantService == nil {
+		return "", errors.New("assistant service is not configured")
 	}
 
 	prompt := sanitizeAIMention(content)
@@ -39,7 +39,7 @@ func (s *ChatService) AskAI(ctx context.Context, content string) (string, error)
 		return "", errors.New("prompt is empty")
 	}
 
-	return s.aiService.GenerateReply(ctx, prompt)
+	return s.assistantService.GenerateReply(ctx, prompt)
 }
 
 func sanitizeAIMention(content string) string {

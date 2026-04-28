@@ -16,22 +16,22 @@ type AIService interface {
 	GenerateReply(ctx context.Context, prompt string) (string, error)
 }
 
-type GeminiService struct {
+type OpenRouterService struct {
 	apiKey string
 	model  string
 	client *http.Client
 }
 
-func NewGeminiService(apiKey, model string) *GeminiService {
+func NewOpenRouterService(apiKey, model string) *OpenRouterService {
 	cleanKey := strings.TrimSpace(apiKey)
 	cleanKey = strings.Trim(cleanKey, `"`)
 
 	cleanModel := strings.TrimSpace(model)
 	if cleanModel == "" {
-		cleanModel = "google/gemma-4-26b-a4b-it:free"
+		cleanModel = "tencent/hy3-preview:free"
 	}
 
-	return &GeminiService{
+	return &OpenRouterService{
 		apiKey: cleanKey,
 		model:  cleanModel,
 		client: &http.Client{
@@ -40,109 +40,14 @@ func NewGeminiService(apiKey, model string) *GeminiService {
 	}
 }
 
-type geminiGenerateRequest struct {
-	Contents []geminiContent `json:"contents"`
-}
-
-type geminiContent struct {
-	Parts []geminiPart `json:"parts"`
-}
-
-type geminiPart struct {
-	Text string `json:"text"`
-}
-
-type geminiGenerateResponse struct {
-	Candidates []struct {
-		Content struct {
-			Parts []struct {
-				Text string `json:"text"`
-			} `json:"parts"`
-		} `json:"content"`
-	} `json:"candidates"`
-}
-
-type geminiErrorResponse struct {
-	Error struct {
-		Code    int    `json:"code"`
-		Message string `json:"message"`
-	} `json:"error"`
-}
-
-func (s *GeminiService) GenerateReply(ctx context.Context, prompt string) (string, error) {
+func (s *OpenRouterService) GenerateReply(ctx context.Context, prompt string) (string, error) {
 	if s.apiKey == "" {
-		return "", errors.New("AI API key is empty")
+		return "", errors.New("OpenRouter API key is empty")
 	}
 	if strings.TrimSpace(prompt) == "" {
 		return "", errors.New("prompt is empty")
 	}
-
-	// OpenRouter key format starts with "sk-or-".
-	if strings.HasPrefix(s.apiKey, "sk-or-") {
-		return s.generateViaOpenRouter(ctx, prompt)
-	}
-
-	return s.generateViaGemini(ctx, prompt)
-}
-
-func (s *GeminiService) generateViaGemini(ctx context.Context, prompt string) (string, error) {
-	reqBody := geminiGenerateRequest{
-		Contents: []geminiContent{
-			{
-				Parts: []geminiPart{
-					{Text: prompt},
-				},
-			},
-		},
-	}
-
-	payload, err := json.Marshal(reqBody)
-	if err != nil {
-		return "", err
-	}
-
-	url := fmt.Sprintf(
-		"https://generativelanguage.googleapis.com/v1beta/models/%s:generateContent?key=%s",
-		s.model,
-		s.apiKey,
-	)
-
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(payload))
-	if err != nil {
-		return "", err
-	}
-	req.Header.Set("Content-Type", "application/json")
-
-	resp, err := s.client.Do(req)
-	if err != nil {
-		return "", err
-	}
-	defer resp.Body.Close()
-
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return "", err
-	}
-
-	if resp.StatusCode >= 300 {
-		return "", humanizeGeminiError(resp.StatusCode, body)
-	}
-
-	var parsed geminiGenerateResponse
-	if err := json.Unmarshal(body, &parsed); err != nil {
-		return "", err
-	}
-
-	if len(parsed.Candidates) == 0 || len(parsed.Candidates[0].Content.Parts) == 0 {
-		return "", errors.New("gemini returned empty response")
-	}
-
-	reply := strings.TrimSpace(parsed.Candidates[0].Content.Parts[0].Text)
-	if reply == "" {
-		return "", errors.New("gemini returned blank text")
-	}
-
-	return reply, nil
+	return s.generateReply(ctx, prompt)
 }
 
 type openRouterRequest struct {
@@ -163,10 +68,10 @@ type openRouterResponse struct {
 	} `json:"choices"`
 }
 
-func (s *GeminiService) generateViaOpenRouter(ctx context.Context, prompt string) (string, error) {
+func (s *OpenRouterService) generateReply(ctx context.Context, prompt string) (string, error) {
 	model := strings.TrimSpace(s.model)
 	if model == "" {
-		model = "google/gemma-4-26b-a4b-it:free"
+		model = "tencent/hy3-preview:free"
 	}
 
 	reqBody := openRouterRequest{
@@ -232,24 +137,6 @@ func (s *GeminiService) generateViaOpenRouter(ctx context.Context, prompt string
 	return reply, nil
 }
 
-func humanizeGeminiError(statusCode int, body []byte) error {
-	var parsed geminiErrorResponse
-	if err := json.Unmarshal(body, &parsed); err == nil && parsed.Error.Message != "" {
-		switch statusCode {
-		case http.StatusTooManyRequests:
-			return fmt.Errorf("kuota Gemini habis (429). Cek billing/rate limit di Google AI Studio lalu coba lagi")
-		case http.StatusNotFound:
-			return fmt.Errorf("model Gemini tidak ditemukan (404). Ganti GEMINI_MODEL di .env")
-		case http.StatusUnauthorized, http.StatusForbidden:
-			return fmt.Errorf("API key Gemini tidak valid/ditolak (%d)", statusCode)
-		default:
-			return fmt.Errorf("gemini API error (%d): %s", statusCode, parsed.Error.Message)
-		}
-	}
-
-	return fmt.Errorf("gemini API error: status %d", statusCode)
-}
-
 func humanizeOpenRouterError(statusCode int, body []byte) error {
 	errText := strings.TrimSpace(string(body))
 	if len(errText) > 220 {
@@ -262,7 +149,7 @@ func humanizeOpenRouterError(statusCode int, body []byte) error {
 	case http.StatusUnauthorized, http.StatusForbidden:
 		return fmt.Errorf("API key OpenRouter tidak valid/ditolak (%d)", statusCode)
 	case http.StatusNotFound:
-		return fmt.Errorf("model OpenRouter tidak ditemukan (404). Cek AI_MODEL di .env")
+		return fmt.Errorf("model OpenRouter tidak ditemukan (404). Cek OPENROUTER_MODEL di .env")
 	default:
 		return fmt.Errorf("openrouter API error (%d): %s", statusCode, errText)
 	}
