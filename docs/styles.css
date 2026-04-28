@@ -165,6 +165,7 @@ body {
   grid-template-rows: auto 1fr auto;
   background: linear-gradient(180deg, #f9fcff, #f9f4ea);
   min-height: 0;
+  overflow: hidden;
 }
 
 .chat-header {
@@ -344,11 +345,6 @@ body {
 }
 
 @media (max-width: 900px) {
-  html,
-  body {
-    overflow: auto;
-  }
-
   body {
     padding: 0;
   }
@@ -364,6 +360,7 @@ body {
   .sidebar {
     border-right: none;
     border-bottom: 1px solid rgba(255, 255, 255, 0.45);
+    overflow: hidden;
   }
 
   .chat-input {
@@ -415,11 +412,44 @@ body {
   }
 
   .sidebar {
-    padding: 0.9rem;
+    padding: 0.85rem;
   }
 
   .brand h1 {
     font-size: 1.3rem;
+  }
+
+  /* Sidebar: "Room Aktif" & "Online Users" jangan kebesaran di HP */
+  .card {
+    padding: 0.65rem 0.7rem;
+    margin-bottom: 0.55rem;
+    border-radius: 10px;
+  }
+
+  .card h2 {
+    margin: 0 0 0.35rem;
+    font-size: 0.86rem;
+  }
+
+  #activeRoomText {
+    font-size: 0.95rem;
+    font-weight: 650;
+  }
+
+  .user-list li {
+    padding: 0.35rem 0.5rem;
+    margin-bottom: 0.25rem;
+    font-size: 0.88rem;
+  }
+
+  .sidebar .card:last-of-type {
+    max-height: 210px;
+    overflow: hidden;
+  }
+
+  .sidebar .card:last-of-type .user-list {
+    max-height: 160px;
+    overflow: hidden;
   }
 
   .chat-header {
