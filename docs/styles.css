@@ -625,7 +625,7 @@ body {
   }
 }
 
-@media (max-width: 390px) {
+@media (max-width: 360px) {
   .sidebar {
     grid-template-columns: 104px minmax(0, 1fr);
     gap: 0.45rem;
