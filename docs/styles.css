@@ -555,10 +555,11 @@ body {
   }
 
   .chat-input {
-    padding: 0.65rem 0.7rem calc(0.65rem + env(safe-area-inset-bottom));
-    gap: 0.35rem;
-    flex-wrap: nowrap;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto auto;
     align-items: center;
+    padding: 0.65rem 0.7rem calc(0.65rem + env(safe-area-inset-bottom));
+    gap: 0.4rem;
   }
 
   .chat-input input,
@@ -570,27 +571,28 @@ body {
   }
 
   #messageInput {
-    flex: 1 1 auto;
     min-width: 0;
+    width: 100%;
+    grid-column: 1 / 2;
   }
 
   .file-trigger {
+    grid-column: 2 / 3;
+    white-space: nowrap;
     padding-inline: 0.62rem;
     font-size: 0.78rem;
   }
 
   .file-name {
-    flex: 0 1 84px;
-    min-width: 70px;
-    padding: 0.6rem 0.55rem;
-    font-size: 0.68rem;
+    display: none;
   }
 
   .chat-input button {
-    flex: 0 0 auto;
-    width: auto;
+    grid-column: 3 / 4;
+    min-width: 58px;
     padding: 0.6rem 0.72rem;
     font-size: 0.82rem;
+    white-space: nowrap;
   }
 
   .bubble {
@@ -599,8 +601,8 @@ body {
   }
 
   .bubble-system {
-    max-width: min(82%, 280px);
-    padding: 0.5rem 0.7rem;
+    max-width: min(78%, 250px);
+    padding: 0.48rem 0.62rem;
     font-size: 0.8rem;
     line-height: 1.35;
     word-break: break-word;
@@ -677,6 +679,7 @@ body {
   }
 
   .chat-input {
+    grid-template-columns: minmax(0, 1fr) auto auto;
     gap: 0.32rem;
     padding: 0.58rem 0.6rem calc(0.58rem + env(safe-area-inset-bottom));
   }
@@ -691,23 +694,14 @@ body {
   }
 
   .file-trigger {
-    padding-inline: 0.5rem;
-    font-size: 0.7rem;
-  }
-
-  .file-name {
-    flex: 0 1 62px;
-    min-width: 62px;
-    max-width: 62px;
-    padding: 0.56rem 0.45rem;
-    font-size: 0.6rem;
+    padding-inline: 0.52rem;
+    font-size: 0.69rem;
   }
 
   .chat-input button {
-    flex: 0 0 54px;
     min-width: 54px;
-    padding-inline: 0.64rem;
-    font-size: 0.78rem;
+    padding-inline: 0.56rem;
+    font-size: 0.76rem;
   }
 
   .bubble {
@@ -721,8 +715,8 @@ body {
   }
 
   .bubble-system {
-    max-width: min(80%, 240px);
-    padding: 0.46rem 0.58rem;
+    max-width: min(76%, 220px);
+    padding: 0.42rem 0.52rem;
     font-size: 0.74rem;
     line-height: 1.3;
   }
