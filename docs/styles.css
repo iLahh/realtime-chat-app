@@ -916,3 +916,56 @@ body {
     height: 20px;
   }
 }
+
+/* Realme 10 & 360px width logical screen optimizations */
+@media (max-width: 360px) {
+  .chat-body {
+    padding: 10px 8px;
+    gap: 6px;
+  }
+  .message-bubble {
+    max-width: 88%;
+    padding: 6px 8px;
+    font-size: 13px;
+    border-radius: 8px;
+  }
+  .sidebar-header {
+    height: 48px;
+    font-size: 14px;
+    padding: 0 10px;
+  }
+  .chat-header {
+    height: 48px;
+    padding: 0 8px;
+  }
+  .chat-header-name {
+    font-size: 13px;
+  }
+  .chat-header-online {
+    font-size: 10px;
+  }
+  .input-bar-container {
+    padding: 6px 8px;
+  }
+  .input-container {
+    padding: 0 8px;
+    min-height: 34px;
+  }
+  .message-input {
+    font-size: 13px;
+    padding: 6px 0;
+  }
+  .icon-btn {
+    width: 32px;
+    height: 32px;
+    padding: 4px;
+  }
+  .send-btn {
+    width: 34px;
+    height: 34px;
+  }
+  .send-btn svg {
+    width: 14px;
+    height: 14px;
+  }
+}
