@@ -73,7 +73,7 @@ type openRouterResponse struct {
 func (s *OpenRouterService) generateReply(ctx context.Context, prompt string) (string, error) {
 	model := strings.TrimSpace(s.model)
 	if model == "" {
-		model = "google/gemma-4-31b-it:free"
+		model = "openai/gpt-oss-20b:free"
 	}
 
 	reqBody := openRouterRequest{
