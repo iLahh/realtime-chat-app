@@ -14,9 +14,10 @@ type SocketEvent struct {
 	Content     string    `json:"content,omitempty"`
 	FileURL     string    `json:"file_url,omitempty"`
 	FileName    string    `json:"file_name,omitempty"`
-	Typing      bool      `json:"typing,omitempty"`
-	OnlineUsers []string  `json:"online_users,omitempty"`
-	Timestamp   time.Time `json:"timestamp"`
+	Typing      bool          `json:"typing,omitempty"`
+	OnlineUsers []string      `json:"online_users,omitempty"`
+	History     []SocketEvent `json:"history,omitempty"`
+	Timestamp   time.Time     `json:"timestamp"`
 }
 
 type SocketHub struct {

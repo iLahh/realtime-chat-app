@@ -2,6 +2,7 @@ package api
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"io"
 	"log"
@@ -20,13 +21,15 @@ import (
 type ChatHandler struct {
 	chatService *service.ChatService
 	hub         *service.SocketHub
+	db          *sql.DB
 	upgrader    websocket.Upgrader
 }
 
-func NewChatHandler(chatService *service.ChatService, hub *service.SocketHub) *ChatHandler {
+func NewChatHandler(chatService *service.ChatService, hub *service.SocketHub, db *sql.DB) *ChatHandler {
 	return &ChatHandler{
 		chatService: chatService,
 		hub:         hub,
+		db:          db,
 		upgrader: websocket.Upgrader{
 			ReadBufferSize:  1024,
 			WriteBufferSize: 1024,
@@ -73,6 +76,10 @@ func (h *ChatHandler) HandleWebSocket(w http.ResponseWriter, r *http.Request) {
 			Timestamp: time.Now().UTC(),
 		})
 	}()
+
+	if h.db != nil {
+		h.sendHistory(client.RoomID, out)
+	}
 
 	h.broadcastOnlineUsers(client.RoomID)
 	h.hub.BroadcastRoom(client.RoomID, service.SocketEvent{
@@ -131,6 +138,16 @@ func (h *ChatHandler) HandleWebSocket(w http.ResponseWriter, r *http.Request) {
 				continue
 			}
 
+			if h.db != nil {
+				_, err := h.db.Exec(`
+					INSERT INTO messages (room_id, sender_id, username, content, file_url, file_name, created_at)
+					VALUES ($1, $2, $3, $4, $5, $6, $7)
+				`, client.RoomID, client.UserID, client.Username, processed.Content, processed.FileURL, processed.FileName, processed.CreatedAt)
+				if err != nil {
+					log.Printf("failed inserting message to db: %v", err)
+				}
+			}
+
 			h.hub.BroadcastRoom(client.RoomID, service.SocketEvent{
 				Type:      "message",
 				RoomID:    client.RoomID,
@@ -160,9 +177,28 @@ func (h *ChatHandler) replyAIAsync(roomID, content string) {
 		ctx, cancel := context.WithTimeout(context.Background(), 18*time.Second)
 		defer cancel()
 
+		// Send typing indicator for AI
+		h.hub.BroadcastRoom(roomID, service.SocketEvent{
+			Type:      "typing",
+			RoomID:    roomID,
+			UserID:    "ai-bot",
+			Username:  "AI Assistant",
+			Typing:    true,
+			Timestamp: time.Now().UTC(),
+		})
+
 		reply, err := h.chatService.AskAI(ctx, content)
 		if err != nil {
 			log.Printf("assistant reply failed for room=%s: %v", roomID, err)
+			// Stop typing indicator
+			h.hub.BroadcastRoom(roomID, service.SocketEvent{
+				Type:      "typing",
+				RoomID:    roomID,
+				UserID:    "ai-bot",
+				Username:  "AI Assistant",
+				Typing:    false,
+				Timestamp: time.Now().UTC(),
+			})
 			h.hub.BroadcastRoom(roomID, service.SocketEvent{
 				Type:      "system",
 				RoomID:    roomID,
@@ -172,15 +208,87 @@ func (h *ChatHandler) replyAIAsync(roomID, content string) {
 			return
 		}
 
+		if h.db != nil {
+			_, err := h.db.Exec(`
+				INSERT INTO messages (room_id, sender_id, username, content, created_at)
+				VALUES ($1, $2, $3, $4, $5)
+			`, roomID, "ai-bot", "AI Assistant", reply, time.Now().UTC())
+			if err != nil {
+				log.Printf("failed inserting ai message to db: %v", err)
+			}
+		}
+
+		// Stop typing indicator before sending reply
+		h.hub.BroadcastRoom(roomID, service.SocketEvent{
+			Type:      "typing",
+			RoomID:    roomID,
+			UserID:    "ai-bot",
+			Username:  "AI Assistant",
+			Typing:    false,
+			Timestamp: time.Now().UTC(),
+		})
+
 		h.hub.BroadcastRoom(roomID, service.SocketEvent{
 			Type:      "message",
 			RoomID:    roomID,
 			UserID:    "ai-bot",
-			Username:  "OpenRouter Assistant",
+			Username:  "AI Assistant",
 			Content:   reply,
 			Timestamp: time.Now().UTC(),
 		})
 	}()
+}
+
+func (h *ChatHandler) sendHistory(roomID string, out chan service.SocketEvent) {
+	rows, err := h.db.Query(`
+		SELECT sender_id, username, content, file_url, file_name, created_at
+		FROM messages
+		WHERE room_id = $1
+		ORDER BY created_at DESC
+		LIMIT 100
+	`, roomID)
+	if err != nil {
+		log.Printf("failed querying history: %v", err)
+		return
+	}
+	defer rows.Close()
+
+	var history []service.SocketEvent
+	for rows.Next() {
+		var (
+			senderID  string
+			username  string
+			content   sql.NullString
+			fileURL   sql.NullString
+			fileName  sql.NullString
+			createdAt time.Time
+		)
+		if err := rows.Scan(&senderID, &username, &content, &fileURL, &fileName, &createdAt); err != nil {
+			log.Printf("failed scanning history: %v", err)
+			continue
+		}
+		history = append(history, service.SocketEvent{
+			Type:      "message",
+			RoomID:    roomID,
+			UserID:    senderID,
+			Username:  username,
+			Content:   content.String,
+			FileURL:   fileURL.String,
+			FileName:  fileName.String,
+			Timestamp: createdAt,
+		})
+	}
+	for i, j := 0, len(history)-1; i < j; i, j = i+1, j-1 {
+		history[i], history[j] = history[j], history[i]
+	}
+
+	if len(history) > 0 {
+		out <- service.SocketEvent{
+			Type:    "history",
+			RoomID:  roomID,
+			History: history,
+		}
+	}
 }
 
 func parseWSClientInfo(r *http.Request) wsClientInfo {

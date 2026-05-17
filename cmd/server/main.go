@@ -1,6 +1,7 @@
 package main
 
 import (
+	"database/sql"
 	"log"
 	"net/http"
 	"os"
@@ -8,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/joho/godotenv"
+	_ "github.com/lib/pq"
 	"github.com/yourname/chat-app-golang/internal/api"
 	"github.com/yourname/chat-app-golang/internal/service"
 )
@@ -16,12 +18,27 @@ func main() {
 	_ = godotenv.Load()
 
 	port := getEnv("PORT", getEnv("APP_PORT", "8080"))
+	dbURL := getEnv("DATABASE_URL", "")
+	var db *sql.DB
+	if dbURL != "" {
+		var err error
+		db, err = sql.Open("postgres", dbURL)
+		if err != nil {
+			log.Fatalf("failed to open database: %v", err)
+		}
+		if err := db.Ping(); err != nil {
+			log.Printf("failed to ping database: %v", err)
+		} else {
+			log.Println("connected to database successfully")
+			initDB(db)
+		}
+	}
 
 	hub := service.NewSocketHub()
 	openRouterService := buildOpenRouterService()
 	chatService := service.NewChatService(openRouterService)
 
-	chatHandler := api.NewChatHandler(chatService, hub)
+	chatHandler := api.NewChatHandler(chatService, hub, db)
 	userHandler := api.NewUserHandler(hub)
 
 	serverMux := newServerMux(chatHandler, userHandler)
@@ -57,6 +74,34 @@ func newServerMux(chatHandler *api.ChatHandler, userHandler *api.UserHandler) *h
 	mux.Handle("/uploads/", http.StripPrefix("/uploads/", http.FileServer(http.Dir("uploads"))))
 
 	return mux
+}
+
+func initDB(db *sql.DB) {
+	query := `
+	CREATE TABLE IF NOT EXISTS messages (
+		id SERIAL PRIMARY KEY,
+		room_id VARCHAR(100),
+		sender_id VARCHAR(100),
+		username VARCHAR(100),
+		content TEXT,
+		file_url TEXT,
+		file_name TEXT,
+		created_at TIMESTAMP DEFAULT NOW()
+	);`
+	if _, err := db.Exec(query); err != nil {
+		log.Printf("failed to create messages table: %v", err)
+	}
+
+	alterQuery := `
+	ALTER TABLE messages 
+		ADD COLUMN IF NOT EXISTS sender_id VARCHAR(100),
+		ADD COLUMN IF NOT EXISTS username VARCHAR(100),
+		ADD COLUMN IF NOT EXISTS file_url TEXT,
+		ADD COLUMN IF NOT EXISTS file_name TEXT;
+	`
+	if _, err := db.Exec(alterQuery); err != nil {
+		log.Printf("failed to alter messages table: %v", err)
+	}
 }
 
 func buildOpenRouterService() *service.OpenRouterService {
