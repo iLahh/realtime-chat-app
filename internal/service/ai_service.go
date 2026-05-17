@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
 	"strings"
 	"time"
@@ -78,6 +79,10 @@ func (s *OpenRouterService) generateReply(ctx context.Context, prompt string) (s
 		Model: model,
 		Messages: []openRouterMessage{
 			{
+				Role:    "system",
+				Content: "You are a helpful AI assistant in a realtime chat room. Reply concisely and helpfully in the same language the user uses.",
+			},
+			{
 				Role:    "user",
 				Content: prompt,
 			},
@@ -119,6 +124,8 @@ func (s *OpenRouterService) generateReply(ctx context.Context, prompt string) (s
 	if resp.StatusCode >= 300 {
 		return "", humanizeOpenRouterError(resp.StatusCode, body)
 	}
+
+	log.Printf("OpenRouter raw response: %s", string(body))
 
 	var parsed openRouterResponse
 	if err := json.Unmarshal(body, &parsed); err != nil {

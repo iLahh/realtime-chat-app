@@ -77,6 +77,18 @@ func newServerMux(chatHandler *api.ChatHandler, userHandler *api.UserHandler) *h
 }
 
 func initDB(db *sql.DB) {
+	// Ensure id column has auto-increment default
+	fixIDQuery := `
+	DO $$
+	BEGIN
+		IF NOT EXISTS (
+			SELECT 1 FROM pg_sequences WHERE sequencename = 'messages_id_seq'
+		) THEN
+			CREATE SEQUENCE IF NOT EXISTS messages_id_seq;
+		END IF;
+	END $$;`
+	_, _ = db.Exec(fixIDQuery)
+
 	query := `
 	CREATE TABLE IF NOT EXISTS messages (
 		id SERIAL PRIMARY KEY,
@@ -91,6 +103,12 @@ func initDB(db *sql.DB) {
 	if _, err := db.Exec(query); err != nil {
 		log.Printf("failed to create messages table: %v", err)
 	}
+
+	// Fix id column if it doesn't have a default
+	setDefaultQuery := `
+	ALTER TABLE messages 
+		ALTER COLUMN id SET DEFAULT nextval('messages_id_seq');`
+	_, _ = db.Exec(setDefaultQuery)
 
 	alterQuery := `
 	ALTER TABLE messages 
