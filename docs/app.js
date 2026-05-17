@@ -93,6 +93,14 @@ els.backBtn.onclick = () => {
   renderRooms();
 };
 
+// Backend URL Helper
+const RAILWAY_HOST = 'realtime-chat-app-production-47b4.up.railway.app';
+function getBackendBase() {
+  if (window.location.protocol === 'file:') return 'http://localhost:8080';
+  if (window.location.host === 'localhost:8080' || window.location.host === '127.0.0.1:8080') return '';
+  return `https://${RAILWAY_HOST}`;
+}
+
 // WebSocket Logic
 function joinRoom(roomId) {
   if (state.rooms[roomId]) {
@@ -100,10 +108,16 @@ function joinRoom(roomId) {
     return;
   }
   
-  const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-  const host = window.location.host || 'localhost:8080';
-  // Fallback local websocket if file is opened directly (file://)
-  const wsUrl = `${window.location.protocol === 'file:' ? 'ws://localhost:8080' : wsProtocol + '//' + host}/ws?user_id=${encodeURIComponent(state.currentUser.id)}&username=${encodeURIComponent(state.currentUser.name)}&room_id=${encodeURIComponent(roomId)}`;
+  // Determine WebSocket base
+  let wsBase;
+  if (window.location.protocol === 'file:') {
+    wsBase = 'ws://localhost:8080';
+  } else if (window.location.host === 'localhost:8080' || window.location.host === '127.0.0.1:8080') {
+    wsBase = `ws://${window.location.host}`;
+  } else {
+    wsBase = `wss://${RAILWAY_HOST}`;
+  }
+  const wsUrl = `${wsBase}/ws?user_id=${encodeURIComponent(state.currentUser.id)}&username=${encodeURIComponent(state.currentUser.name)}&room_id=${encodeURIComponent(roomId)}`;
   
   const ws = new WebSocket(wsUrl);
   
@@ -276,7 +290,7 @@ function buildMessageHTML(m) {
   let contentHtml = `<div class="message-content ${isAI ? 'ai-text' : ''}">${escapeHtml(m.content)}</div>`;
   
   if (m.file_url) {
-    const fileUrl = m.file_url.startsWith('/') ? (window.location.protocol === 'file:' ? 'http://localhost:8080' : '') + m.file_url : m.file_url;
+    const fileUrl = m.file_url.startsWith('/') ? getBackendBase() + m.file_url : m.file_url;
     const isImg = /\.(jpg|jpeg|png|gif|webp)(\?|$)/i.test(fileUrl);
     if (isImg) {
       contentHtml = `<img src="${fileUrl}" class="file-preview" alt="image" />` + contentHtml;
@@ -401,7 +415,7 @@ async function sendMessage() {
     try {
       els.sendBtn.style.opacity = '0.5';
       els.sendBtn.disabled = true;
-      const endpoint = window.location.protocol === 'file:' ? 'http://localhost:8080/upload' : '/upload';
+      const endpoint = getBackendBase() + '/upload';
       const res = await fetch(endpoint, { method: 'POST', body: formData });
       const json = await res.json();
       if (json.data && json.data.file_url) {

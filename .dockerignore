@@ -1,0 +1,6 @@
+# Ignore these files during Docker build
+.env
+.git
+.gitignore
+uploads/
+*.md
