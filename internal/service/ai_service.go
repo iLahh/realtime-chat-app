@@ -64,7 +64,8 @@ type openRouterMessage struct {
 type openRouterResponse struct {
 	Choices []struct {
 		Message struct {
-			Content string `json:"content"`
+			Content   *string `json:"content"`
+			Reasoning string  `json:"reasoning"`
 		} `json:"message"`
 	} `json:"choices"`
 }
@@ -72,7 +73,7 @@ type openRouterResponse struct {
 func (s *OpenRouterService) generateReply(ctx context.Context, prompt string) (string, error) {
 	model := strings.TrimSpace(s.model)
 	if model == "" {
-		model = "tencent/hy3-preview:free"
+		model = "google/gemma-4-31b-it:free"
 	}
 
 	reqBody := openRouterRequest{
@@ -136,7 +137,14 @@ func (s *OpenRouterService) generateReply(ctx context.Context, prompt string) (s
 		return "", errors.New("openrouter returned empty response")
 	}
 
-	reply := strings.TrimSpace(parsed.Choices[0].Message.Content)
+	reply := ""
+	if parsed.Choices[0].Message.Content != nil {
+		reply = strings.TrimSpace(*parsed.Choices[0].Message.Content)
+	}
+	// Fallback to reasoning field for reasoning models (e.g. DeepSeek V4)
+	if reply == "" {
+		reply = strings.TrimSpace(parsed.Choices[0].Message.Reasoning)
+	}
 	if reply == "" {
 		return "", errors.New("openrouter returned blank text")
 	}
