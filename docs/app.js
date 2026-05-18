@@ -94,7 +94,7 @@ function scrollToBottom() {
 // ============================================================
 // === WEBSOCKET & ROOM MANAGEMENT ===
 
-function joinRoom(roomId) {
+function joinRoom(roomId, shouldOpen = true) {
   if (state.rooms[roomId]) {
     if (state.rooms[roomId].username !== state.currentUser.name) {
       if (state.rooms[roomId].ws) {
@@ -102,7 +102,9 @@ function joinRoom(roomId) {
       }
       delete state.rooms[roomId];
     } else {
-      openRoom(roomId);
+      if (shouldOpen) {
+        openRoom(roomId);
+      }
       return;
     }
   }
@@ -135,12 +137,14 @@ function joinRoom(roomId) {
     setTimeout(() => {
       if(state.rooms[roomId]) {
         delete state.rooms[roomId];
-        joinRoom(roomId);
+        joinRoom(roomId, state.activeRoom === roomId);
       }
     }, 3000);
   };
   
-  openRoom(roomId);
+  if (shouldOpen) {
+    openRoom(roomId);
+  }
   renderRooms();
 }
 
@@ -248,7 +252,6 @@ function saveStateToStorage() {
 
 function restoreRooms() {
   const storedRooms = localStorage.getItem('joinedRooms');
-  const storedActiveRoom = localStorage.getItem('activeRoom');
   
   if (storedRooms) {
     try {
@@ -259,12 +262,8 @@ function restoreRooms() {
         }
         
         roomIds.forEach(roomId => {
-          joinRoom(roomId);
+          joinRoom(roomId, false);
         });
-        
-        if (storedActiveRoom && roomIds.includes(storedActiveRoom)) {
-          openRoom(storedActiveRoom);
-        }
       }
     } catch (e) {
       console.error("Failed to restore rooms from localStorage:", e);
@@ -527,13 +526,13 @@ els.joinForm.onsubmit = (e) => {
         state.rooms[id].ws.close();
       }
       delete state.rooms[id];
-      joinRoom(id);
+      joinRoom(id, id === roomId);
     });
     if (!existingRoomIds.includes(roomId)) {
-      joinRoom(roomId);
+      joinRoom(roomId, true);
     }
   } else {
-    joinRoom(roomId);
+    joinRoom(roomId, true);
   }
   
   els.joinModal.classList.remove('active');
