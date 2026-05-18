@@ -1,21 +1,32 @@
-// State Management
+// ============================================================
+// === CONSTANTS & CONFIG ===
+
+const RAILWAY_HOST = 'realtime-chat-app-production-47b4.up.railway.app';
+
+function getBackendBase() {
+  if (window.location.protocol === 'file:') return 'http://localhost:8080';
+  if (window.location.host === 'localhost:8080' || window.location.host === '127.0.0.1:8080') return '';
+  return `https://${RAILWAY_HOST}`;
+}
+
+// ============================================================
+// === STATE ===
+
 const state = {
   currentUser: { 
     id: sessionStorage.getItem('userId') || generateId(), 
     name: localStorage.getItem('userName') || '' 
   },
-  rooms: {}, // { [roomId]: { ws, messages: [], unread: 0, online: 0 } }
+  rooms: {},
   activeRoom: null,
   typingTimers: {}
 };
 
-function generateId() {
-  const id = 'user-' + Math.random().toString(36).substr(2, 6);
-  sessionStorage.setItem('userId', id);
-  return id;
-}
+let currentAttachedFile = null;
 
-// DOM Elements
+// ============================================================
+// === DOM ELEMENTS ===
+
 const els = {
   roomList: document.getElementById('roomList'),
   emptySidebar: document.getElementById('emptySidebar'),
@@ -47,68 +58,55 @@ const els = {
   typingText: document.getElementById('typingText')
 };
 
-let currentAttachedFile = null;
+// ============================================================
+// === UTILITY FUNCTIONS ===
 
-// Initialization
-// els.nameInput.value = state.currentUser.name;
-
-// Modal Events
-els.fab.onclick = () => {
-  els.joinModal.classList.add('active');
-  els.roomInput.value = '';
-  els.nameInput.value = '';
-  els.roomInput.focus();
-};
-
-els.btnCancel.onclick = () => {
-  els.joinModal.classList.remove('active');
-};
-
-els.joinModal.onclick = (e) => {
-  if(e.target === els.joinModal) els.joinModal.classList.remove('active');
-};
-
-document.addEventListener('keydown', (e) => {
-  if(e.key === 'Escape') els.joinModal.classList.remove('active');
-});
-
-els.joinForm.onsubmit = (e) => {
-  e.preventDefault();
-  const roomId = els.roomInput.value.trim().toLowerCase();
-  const name = els.nameInput.value.trim();
-  if (!roomId || !name) return;
-  
-  state.currentUser.name = name;
-  localStorage.setItem('userName', name);
-  
-  joinRoom(roomId);
-  els.joinModal.classList.remove('active');
-  els.roomInput.value = '';
-};
-
-// Mobile Back Button
-els.backBtn.onclick = () => {
-  document.querySelector('.main-area').classList.remove('active');
-  state.activeRoom = null;
-  renderRooms();
-};
-
-// Backend URL Helper
-const RAILWAY_HOST = 'realtime-chat-app-production-47b4.up.railway.app';
-function getBackendBase() {
-  if (window.location.protocol === 'file:') return 'http://localhost:8080';
-  if (window.location.host === 'localhost:8080' || window.location.host === '127.0.0.1:8080') return '';
-  return `https://${RAILWAY_HOST}`;
+function generateId() {
+  const id = 'user-' + Math.random().toString(36).substr(2, 6);
+  sessionStorage.setItem('userId', id);
+  return id;
 }
 
-// WebSocket Logic
+function hashStringToColor(str) {
+  let hash = 0;
+  for(let i=0; i<str.length; i++){
+    hash = str.charCodeAt(i) + ((hash << 5) - hash);
+  }
+  const h = Math.abs(hash % 360);
+  return `hsl(${h}, 70%, 45%)`;
+}
+
+function formatTime(d) {
+  if(!d) d = new Date();
+  else d = new Date(d);
+  return d.getHours().toString().padStart(2,'0') + ':' + d.getMinutes().toString().padStart(2,'0');
+}
+
+function escapeHtml(text) {
+  if (!text) return '';
+  return text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+}
+
+function scrollToBottom() {
+  els.chatBody.scrollTop = els.chatBody.scrollHeight;
+}
+
+// ============================================================
+// === WEBSOCKET & ROOM MANAGEMENT ===
+
 function joinRoom(roomId) {
   if (state.rooms[roomId]) {
-    openRoom(roomId);
-    return;
+    if (state.rooms[roomId].username !== state.currentUser.name) {
+      if (state.rooms[roomId].ws) {
+        state.rooms[roomId].ws.close();
+      }
+      delete state.rooms[roomId];
+    } else {
+      openRoom(roomId);
+      return;
+    }
   }
   
-  // Determine WebSocket base
   let wsBase;
   if (window.location.protocol === 'file:') {
     wsBase = 'ws://localhost:8080';
@@ -121,7 +119,8 @@ function joinRoom(roomId) {
   
   const ws = new WebSocket(wsUrl);
   
-  state.rooms[roomId] = { ws, messages: [], unread: 0, online: 0 };
+  state.rooms[roomId] = { ws, messages: [], unread: 0, online: 0, username: state.currentUser.name };
+  saveStateToStorage();
   
   ws.onmessage = (e) => {
     try {
@@ -133,7 +132,6 @@ function joinRoom(roomId) {
   
   ws.onclose = () => {
     console.log(`Disconnected from ${roomId}. Reconnecting in 3s...`);
-    // Simple auto-reconnect
     setTimeout(() => {
       if(state.rooms[roomId]) {
         delete state.rooms[roomId];
@@ -198,6 +196,7 @@ function openRoom(roomId) {
   if(state.rooms[roomId]) {
      state.rooms[roomId].unread = 0;
   }
+  saveStateToStorage();
   
   els.mainEmpty.style.display = 'none';
   els.chatArea.style.display = 'flex';
@@ -216,21 +215,65 @@ function openRoom(roomId) {
   setTimeout(() => els.messageInput.focus(), 100);
 }
 
-// UI Renderers
-function hashStringToColor(str) {
-  let hash = 0;
-  for(let i=0; i<str.length; i++){
-    hash = str.charCodeAt(i) + ((hash << 5) - hash);
+function deleteRoom(e, roomId) {
+  e.stopPropagation();
+  
+  if (!confirm(`Apakah Anda yakin ingin menghapus/keluar dari room "${roomId}"?`)) {
+    return;
   }
-  const h = Math.abs(hash % 360);
-  return `hsl(${h}, 70%, 45%)`;
+  
+  if (state.rooms[roomId]) {
+    if (state.rooms[roomId].ws) {
+      state.rooms[roomId].ws.close();
+    }
+    delete state.rooms[roomId];
+  }
+  
+  if (state.activeRoom === roomId) {
+    state.activeRoom = null;
+    els.chatArea.style.display = 'none';
+    els.mainEmpty.style.display = 'flex';
+    document.querySelector('.main-area').classList.remove('active');
+  }
+  
+  saveStateToStorage();
+  renderRooms();
 }
 
-function formatTime(d) {
-  if(!d) d = new Date();
-  else d = new Date(d);
-  return d.getHours().toString().padStart(2,'0') + ':' + d.getMinutes().toString().padStart(2,'0');
+function saveStateToStorage() {
+  const roomIds = Object.keys(state.rooms);
+  localStorage.setItem('joinedRooms', JSON.stringify(roomIds));
+  localStorage.setItem('activeRoom', state.activeRoom || '');
 }
+
+function restoreRooms() {
+  const storedRooms = localStorage.getItem('joinedRooms');
+  const storedActiveRoom = localStorage.getItem('activeRoom');
+  
+  if (storedRooms) {
+    try {
+      const roomIds = JSON.parse(storedRooms);
+      if (Array.isArray(roomIds) && roomIds.length > 0) {
+        if (state.currentUser.name) {
+          els.nameInput.value = state.currentUser.name;
+        }
+        
+        roomIds.forEach(roomId => {
+          joinRoom(roomId);
+        });
+        
+        if (storedActiveRoom && roomIds.includes(storedActiveRoom)) {
+          openRoom(storedActiveRoom);
+        }
+      }
+    } catch (e) {
+      console.error("Failed to restore rooms from localStorage:", e);
+    }
+  }
+}
+
+// ============================================================
+// === RENDER FUNCTIONS ===
 
 function renderRooms() {
   const roomIds = Object.keys(state.rooms);
@@ -255,7 +298,20 @@ function renderRooms() {
         <div class="room-info">
           <div class="room-top">
             <span class="room-name">${id}</span>
-            <span class="room-time">${time}</span>
+            <div class="room-top-right">
+              <span class="room-time">${time}</span>
+              <div class="room-menu-container">
+                <button class="room-menu-btn" onclick="toggleRoomMenu(event, '${id}')" title="Options">
+                  <svg viewBox="0 0 24 24"><path d="M12 8c1.1 0 2-.9 2-2s-.9-2-2-2-2 .9-2 2 .9 2 2 2zm0 2c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2zm0 6c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2z"/></svg>
+                </button>
+                <div class="room-dropdown" id="dropdown-${id}">
+                  <button class="dropdown-item delete" onclick="deleteRoom(event, '${id}')">
+                    <svg viewBox="0 0 24 24"><path d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z"/></svg>
+                    <span>Hapus Chat</span>
+                  </button>
+                </div>
+              </div>
+            </div>
           </div>
           <div class="room-bottom">
             <span class="room-preview">${escapeHtml(preview)}</span>
@@ -328,16 +384,33 @@ function buildMessageHTML(m) {
   `;
 }
 
-function escapeHtml(text) {
-  if (!text) return '';
-  return text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+function toggleRoomMenu(e, roomId) {
+  e.stopPropagation();
+  
+  const allDropdowns = document.querySelectorAll('.room-dropdown');
+  allDropdowns.forEach(d => {
+    if (d.id !== `dropdown-${roomId}`) {
+      d.classList.remove('active');
+      if (d.parentElement) {
+        d.parentElement.classList.remove('active');
+      }
+    }
+  });
+  
+  const dropdown = document.getElementById(`dropdown-${roomId}`);
+  if (dropdown) {
+    const isActive = dropdown.classList.toggle('active');
+    if (dropdown.parentElement) {
+      dropdown.parentElement.classList.toggle('active', isActive);
+    }
+  }
 }
 
-function scrollToBottom() {
-  els.chatBody.scrollTop = els.chatBody.scrollHeight;
-}
+// ============================================================
+// === TYPING INDICATOR ===
 
 let typingTimerId = null;
+
 function showTyping(name) {
   els.typingText.textContent = `${name} is typing`;
   els.typingContainer.style.display = 'flex';
@@ -348,52 +421,13 @@ function showTyping(name) {
     hideTyping();
   }, 3000);
 }
+
 function hideTyping() {
   els.typingContainer.style.display = 'none';
 }
 
-// Input & Sending Logic
-els.messageInput.addEventListener('input', () => {
-  els.messageInput.style.height = 'auto';
-  els.messageInput.style.height = (els.messageInput.scrollHeight < 120 ? els.messageInput.scrollHeight : 120) + 'px';
-  
-  if (state.activeRoom && state.rooms[state.activeRoom]) {
-    if(state.rooms[state.activeRoom].ws.readyState === WebSocket.OPEN) {
-      state.rooms[state.activeRoom].ws.send(JSON.stringify({
-        type: 'typing',
-        room_id: state.activeRoom,
-        user_id: state.currentUser.id,
-        username: state.currentUser.name,
-        typing: true
-      }));
-    }
-  }
-});
-
-els.messageInput.addEventListener('keydown', (e) => {
-  if (e.key === 'Enter' && !e.shiftKey) {
-    e.preventDefault();
-    sendMessage();
-  }
-});
-
-els.sendBtn.onclick = sendMessage;
-
-// File Attachments
-els.attachBtn.onclick = () => els.fileInput.click();
-els.fileInput.onchange = (e) => {
-  const file = e.target.files[0];
-  if (file) {
-    currentAttachedFile = file;
-    els.attachedFilename.textContent = file.name;
-    els.attachedFilePreview.classList.add('active');
-  }
-};
-els.removeFileBtn.onclick = () => {
-  currentAttachedFile = null;
-  els.fileInput.value = '';
-  els.attachedFilePreview.classList.remove('active');
-};
+// ============================================================
+// === MESSAGE SENDING ===
 
 async function sendMessage() {
   if (!state.activeRoom || !state.rooms[state.activeRoom]) return;
@@ -437,7 +471,6 @@ async function sendMessage() {
     file_name: fileName
   }));
   
-  // Reset inputs
   els.messageInput.value = '';
   els.messageInput.style.height = 'auto';
   currentAttachedFile = null;
@@ -446,7 +479,6 @@ async function sendMessage() {
   els.sendBtn.style.opacity = '1';
   els.sendBtn.disabled = false;
   
-  // Stop typing
   ws.send(JSON.stringify({
     type: 'typing',
     room_id: state.activeRoom,
@@ -455,3 +487,120 @@ async function sendMessage() {
     typing: false
   }));
 }
+
+// ============================================================
+// === EVENT LISTENERS ===
+
+els.fab.onclick = () => {
+  els.joinModal.classList.add('active');
+  els.roomInput.value = '';
+  els.nameInput.value = '';
+  els.roomInput.focus();
+};
+
+els.btnCancel.onclick = () => {
+  els.joinModal.classList.remove('active');
+};
+
+els.joinModal.onclick = (e) => {
+  if(e.target === els.joinModal) els.joinModal.classList.remove('active');
+};
+
+document.addEventListener('keydown', (e) => {
+  if(e.key === 'Escape') els.joinModal.classList.remove('active');
+});
+
+els.joinForm.onsubmit = (e) => {
+  e.preventDefault();
+  const roomId = els.roomInput.value.trim().toLowerCase();
+  const name = els.nameInput.value.trim();
+  if (!roomId || !name) return;
+  
+  const nameChanged = state.currentUser.name !== name;
+  state.currentUser.name = name;
+  localStorage.setItem('userName', name);
+  
+  if (nameChanged) {
+    const existingRoomIds = Object.keys(state.rooms);
+    existingRoomIds.forEach(id => {
+      if (state.rooms[id].ws) {
+        state.rooms[id].ws.close();
+      }
+      delete state.rooms[id];
+      joinRoom(id);
+    });
+    if (!existingRoomIds.includes(roomId)) {
+      joinRoom(roomId);
+    }
+  } else {
+    joinRoom(roomId);
+  }
+  
+  els.joinModal.classList.remove('active');
+  els.roomInput.value = '';
+};
+
+els.backBtn.onclick = () => {
+  document.querySelector('.main-area').classList.remove('active');
+  state.activeRoom = null;
+  saveStateToStorage();
+  renderRooms();
+};
+
+els.messageInput.addEventListener('input', () => {
+  els.messageInput.style.height = 'auto';
+  els.messageInput.style.height = (els.messageInput.scrollHeight < 120 ? els.messageInput.scrollHeight : 120) + 'px';
+  
+  if (state.activeRoom && state.rooms[state.activeRoom]) {
+    if(state.rooms[state.activeRoom].ws.readyState === WebSocket.OPEN) {
+      state.rooms[state.activeRoom].ws.send(JSON.stringify({
+        type: 'typing',
+        room_id: state.activeRoom,
+        user_id: state.currentUser.id,
+        username: state.currentUser.name,
+        typing: true
+      }));
+    }
+  }
+});
+
+els.messageInput.addEventListener('keydown', (e) => {
+  if (e.key === 'Enter' && !e.shiftKey) {
+    e.preventDefault();
+    sendMessage();
+  }
+});
+
+els.sendBtn.onclick = sendMessage;
+
+els.attachBtn.onclick = () => els.fileInput.click();
+
+els.fileInput.onchange = (e) => {
+  const file = e.target.files[0];
+  if (file) {
+    currentAttachedFile = file;
+    els.attachedFilename.textContent = file.name;
+    els.attachedFilePreview.classList.add('active');
+  }
+};
+
+els.removeFileBtn.onclick = () => {
+  currentAttachedFile = null;
+  els.fileInput.value = '';
+  els.attachedFilePreview.classList.remove('active');
+};
+
+document.addEventListener('click', () => {
+  const allDropdowns = document.querySelectorAll('.room-dropdown');
+  allDropdowns.forEach(d => {
+    d.classList.remove('active');
+    if (d.parentElement) {
+      d.parentElement.classList.remove('active');
+    }
+  });
+});
+
+// ============================================================
+// === INIT ===
+
+restoreRooms();

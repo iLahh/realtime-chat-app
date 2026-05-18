@@ -37,7 +37,7 @@ body {
   position: relative;
 }
 
-/* Sidebar */
+
 .sidebar {
   width: 30%;
   min-width: 300px;
@@ -146,6 +146,110 @@ body {
   color: var(--text-secondary);
 }
 
+.room-top-right {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.room-menu-container {
+  position: relative;
+  display: inline-block;
+}
+
+.room-menu-btn {
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: var(--text-secondary);
+  padding: 4px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0;
+  pointer-events: none;
+  transform: scale(0.8);
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  width: 24px;
+  height: 24px;
+}
+
+.room-menu-btn:hover {
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--text-primary);
+}
+
+.room-item:hover .room-menu-btn,
+.room-menu-container.active .room-menu-btn {
+  opacity: 1;
+  pointer-events: auto;
+  transform: scale(1);
+}
+
+.room-menu-btn svg {
+  width: 16px;
+  height: 16px;
+  fill: currentColor;
+}
+
+.room-dropdown {
+  position: absolute;
+  top: 100%;
+  right: 0;
+  background: #1f2c34;
+  border-radius: 8px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4), 0 2px 4px rgba(0, 0, 0, 0.3);
+  padding: 4px 0;
+  min-width: 130px;
+  z-index: 50;
+  opacity: 0;
+  transform: translateY(-8px) scale(0.95);
+  pointer-events: none;
+  transition: opacity 0.15s ease, transform 0.15s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+.room-dropdown.active {
+  opacity: 1;
+  transform: translateY(4px) scale(1);
+  pointer-events: auto;
+}
+
+.dropdown-item {
+  width: 100%;
+  background: none;
+  border: none;
+  padding: 10px 16px;
+  text-align: left;
+  font-size: 14px;
+  color: var(--text-primary);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-family: inherit;
+  transition: background 0.15s ease;
+}
+
+.dropdown-item:hover {
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.dropdown-item.delete {
+  color: #ef4444;
+}
+
+.dropdown-item.delete:hover {
+  background: rgba(239, 68, 68, 0.1);
+}
+
+.dropdown-item svg {
+  width: 16px;
+  height: 16px;
+  fill: currentColor;
+  flex-shrink: 0;
+}
+
 .room-bottom {
   display: flex;
   justify-content: space-between;
@@ -172,7 +276,7 @@ body {
   text-align: center;
 }
 
-/* FAB */
+
 .fab {
   position: absolute;
   bottom: 24px;
@@ -207,7 +311,7 @@ body {
   stroke-linejoin: round;
 }
 
-/* Main Area */
+
 .main-area {
   flex: 1;
   display: flex;
@@ -246,7 +350,7 @@ body {
   line-height: 1.5;
 }
 
-/* Chat Area */
+
 .chat-area {
   display: flex;
   flex-direction: column;
@@ -301,7 +405,7 @@ body {
   margin-top: 2px;
 }
 
-/* WhatsApp default chat background pattern with low opacity */
+
 .chat-body {
   flex: 1;
   overflow-y: auto;
@@ -321,7 +425,7 @@ body {
   border-radius: 3px;
 }
 
-/* Messages */
+
 .message-wrapper {
   display: flex;
   margin-bottom: 8px;
@@ -338,6 +442,9 @@ body {
 
 .message-bubble {
   max-width: 75%;
+  min-width: 0;
+  word-break: break-word;
+  overflow-wrap: break-word;
   padding: 6px 8px;
   font-size: 14px;
   position: relative;
@@ -395,6 +502,8 @@ body {
 
 .message-content {
   word-wrap: break-word;
+  word-break: break-word;
+  overflow-wrap: break-word;
   white-space: pre-wrap;
   margin-bottom: 12px;
 }
@@ -441,7 +550,7 @@ body {
   color: rgba(255, 255, 255, 0.8);
 }
 
-/* File Preview */
+
 .file-preview {
   display: block;
   max-width: 100%;
@@ -474,7 +583,7 @@ body {
   max-width: 200px;
 }
 
-/* Typing Indicator */
+
 .typing-container {
   padding: 8px 14px;
   background: var(--bg-message-in);
@@ -533,7 +642,7 @@ body {
   }
 }
 
-/* Input Bar */
+
 .input-bar-container {
   background: var(--bg-input);
   padding: 10px 16px;
@@ -664,7 +773,7 @@ body {
   transform: translateX(2px);
 }
 
-/* Modal */
+
 .modal-overlay {
   position: fixed;
   top: 0;
@@ -773,7 +882,7 @@ body {
   background: #008f6f;
 }
 
-/* Responsive Mobile */
+
 @media (max-width: 768px) {
   .sidebar {
     width: 100%;
@@ -801,7 +910,7 @@ body {
   }
 }
 
-/* Responsive Mobile 400px and below */
+
 @media (max-width: 400px) {
   .sidebar-header {
     height: 52px;
@@ -926,7 +1035,7 @@ body {
   }
 }
 
-/* Realme 10 & 360px width logical screen optimizations */
+
 @media (max-width: 360px) {
   .chat-body {
     padding: 10px 8px;

@@ -1,3 +1,6 @@
+// ============================================================
+// === PACKAGE & IMPORTS ===
+
 package api
 
 import (
@@ -18,12 +21,32 @@ import (
 	"github.com/yourname/chat-app-golang/pkg/utils"
 )
 
+// ============================================================
+// === TYPES ===
+
 type ChatHandler struct {
 	chatService *service.ChatService
 	hub         *service.SocketHub
 	db          *sql.DB
 	upgrader    websocket.Upgrader
 }
+
+type inboundEvent struct {
+	Type     string `json:"type"`
+	Content  string `json:"content,omitempty"`
+	FileURL  string `json:"file_url,omitempty"`
+	FileName string `json:"file_name,omitempty"`
+	Typing   bool   `json:"typing,omitempty"`
+}
+
+type wsClientInfo struct {
+	UserID   string
+	Username string
+	RoomID   string
+}
+
+// ============================================================
+// === CONSTRUCTOR ===
 
 func NewChatHandler(chatService *service.ChatService, hub *service.SocketHub, db *sql.DB) *ChatHandler {
 	return &ChatHandler{
@@ -40,19 +63,8 @@ func NewChatHandler(chatService *service.ChatService, hub *service.SocketHub, db
 	}
 }
 
-type inboundEvent struct {
-	Type     string `json:"type"`
-	Content  string `json:"content,omitempty"`
-	FileURL  string `json:"file_url,omitempty"`
-	FileName string `json:"file_name,omitempty"`
-	Typing   bool   `json:"typing,omitempty"`
-}
-
-type wsClientInfo struct {
-	UserID   string
-	Username string
-	RoomID   string
-}
+// ============================================================
+// === WEBSOCKET HANDLER (entry point) ===
 
 func (h *ChatHandler) HandleWebSocket(w http.ResponseWriter, r *http.Request) {
 	conn, err := h.upgrader.Upgrade(w, r, nil)
@@ -100,7 +112,6 @@ func (h *ChatHandler) HandleWebSocket(w http.ResponseWriter, r *http.Request) {
 	for {
 		var in inboundEvent
 		if err := conn.ReadJSON(&in); err != nil {
-			// Normal close/disconnect
 			if websocket.IsCloseError(err, websocket.CloseGoingAway, websocket.CloseNormalClosure) || errors.Is(err, websocket.ErrCloseSent) {
 				return
 			}
@@ -172,12 +183,25 @@ func (h *ChatHandler) HandleWebSocket(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+// ============================================================
+// === MESSAGE PROCESSING ===
+
+func (h *ChatHandler) buildIncomingMessage(client wsClientInfo, in inboundEvent) model.Message {
+	return model.Message{
+		RoomID:    client.RoomID,
+		UserID:    client.UserID,
+		Content:   strings.TrimSpace(in.Content),
+		FileURL:   strings.TrimSpace(in.FileURL),
+		FileName:  strings.TrimSpace(in.FileName),
+		CreatedAt: time.Now().UTC(),
+	}
+}
+
 func (h *ChatHandler) replyAIAsync(roomID, content string) {
 	go func() {
 		ctx, cancel := context.WithTimeout(context.Background(), 18*time.Second)
 		defer cancel()
 
-		// Send typing indicator for AI
 		h.hub.BroadcastRoom(roomID, service.SocketEvent{
 			Type:      "typing",
 			RoomID:    roomID,
@@ -190,7 +214,7 @@ func (h *ChatHandler) replyAIAsync(roomID, content string) {
 		reply, err := h.chatService.AskAI(ctx, content)
 		if err != nil {
 			log.Printf("assistant reply failed for room=%s: %v", roomID, err)
-			// Stop typing indicator
+
 			h.hub.BroadcastRoom(roomID, service.SocketEvent{
 				Type:      "typing",
 				RoomID:    roomID,
@@ -218,7 +242,6 @@ func (h *ChatHandler) replyAIAsync(roomID, content string) {
 			}
 		}
 
-		// Stop typing indicator before sending reply
 		h.hub.BroadcastRoom(roomID, service.SocketEvent{
 			Type:      "typing",
 			RoomID:    roomID,
@@ -239,91 +262,8 @@ func (h *ChatHandler) replyAIAsync(roomID, content string) {
 	}()
 }
 
-func (h *ChatHandler) sendHistory(roomID string, out chan service.SocketEvent) {
-	rows, err := h.db.Query(`
-		SELECT sender_id, username, content, file_url, file_name, created_at
-		FROM messages
-		WHERE room_id = $1
-		ORDER BY created_at DESC
-		LIMIT 100
-	`, roomID)
-	if err != nil {
-		log.Printf("failed querying history: %v", err)
-		return
-	}
-	defer rows.Close()
-
-	var history []service.SocketEvent
-	for rows.Next() {
-		var (
-			senderID  string
-			username  string
-			content   sql.NullString
-			fileURL   sql.NullString
-			fileName  sql.NullString
-			createdAt time.Time
-		)
-		if err := rows.Scan(&senderID, &username, &content, &fileURL, &fileName, &createdAt); err != nil {
-			log.Printf("failed scanning history: %v", err)
-			continue
-		}
-		history = append(history, service.SocketEvent{
-			Type:      "message",
-			RoomID:    roomID,
-			UserID:    senderID,
-			Username:  username,
-			Content:   content.String,
-			FileURL:   fileURL.String,
-			FileName:  fileName.String,
-			Timestamp: createdAt,
-		})
-	}
-	for i, j := 0, len(history)-1; i < j; i, j = i+1, j-1 {
-		history[i], history[j] = history[j], history[i]
-	}
-
-	if len(history) > 0 {
-		out <- service.SocketEvent{
-			Type:    "history",
-			RoomID:  roomID,
-			History: history,
-		}
-	}
-}
-
-func parseWSClientInfo(r *http.Request) wsClientInfo {
-	userID := strings.TrimSpace(r.URL.Query().Get("user_id"))
-	if userID == "" {
-		userID = "guest-" + time.Now().Format("150405.000")
-	}
-
-	username := strings.TrimSpace(r.URL.Query().Get("username"))
-	if username == "" {
-		username = userID
-	}
-
-	roomID := strings.TrimSpace(r.URL.Query().Get("room_id"))
-	if roomID == "" {
-		roomID = "general"
-	}
-
-	return wsClientInfo{
-		UserID:   userID,
-		Username: username,
-		RoomID:   roomID,
-	}
-}
-
-func (h *ChatHandler) buildIncomingMessage(client wsClientInfo, in inboundEvent) model.Message {
-	return model.Message{
-		RoomID:    client.RoomID,
-		UserID:    client.UserID,
-		Content:   strings.TrimSpace(in.Content),
-		FileURL:   strings.TrimSpace(in.FileURL),
-		FileName:  strings.TrimSpace(in.FileName),
-		CreatedAt: time.Now().UTC(),
-	}
-}
+// ============================================================
+// === HTTP HANDLERS ===
 
 func (h *ChatHandler) HandleUploadPhoto(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
@@ -381,6 +321,84 @@ func (h *ChatHandler) HandleUploadPhoto(w http.ResponseWriter, r *http.Request) 
 			"file_name": originalName,
 		},
 	})
+}
+
+// ============================================================
+// === HELPER METHODS ===
+
+func parseWSClientInfo(r *http.Request) wsClientInfo {
+	userID := strings.TrimSpace(r.URL.Query().Get("user_id"))
+	if userID == "" {
+		userID = "guest-" + time.Now().Format("150405.000")
+	}
+
+	username := strings.TrimSpace(r.URL.Query().Get("username"))
+	if username == "" {
+		username = userID
+	}
+
+	roomID := strings.TrimSpace(r.URL.Query().Get("room_id"))
+	if roomID == "" {
+		roomID = "general"
+	}
+
+	return wsClientInfo{
+		UserID:   userID,
+		Username: username,
+		RoomID:   roomID,
+	}
+}
+
+func (h *ChatHandler) sendHistory(roomID string, out chan service.SocketEvent) {
+	rows, err := h.db.Query(`
+		SELECT sender_id, username, content, file_url, file_name, created_at
+		FROM messages
+		WHERE room_id = $1
+		ORDER BY created_at DESC
+		LIMIT 100
+	`, roomID)
+	if err != nil {
+		log.Printf("failed querying history: %v", err)
+		return
+	}
+	defer rows.Close()
+
+	var history []service.SocketEvent
+	for rows.Next() {
+		var (
+			senderID  string
+			username  string
+			content   sql.NullString
+			fileURL   sql.NullString
+			fileName  sql.NullString
+			createdAt time.Time
+		)
+		if err := rows.Scan(&senderID, &username, &content, &fileURL, &fileName, &createdAt); err != nil {
+			log.Printf("failed scanning history: %v", err)
+			continue
+		}
+		history = append(history, service.SocketEvent{
+			Type:      "message",
+			RoomID:    roomID,
+			UserID:    senderID,
+			Username:  username,
+			Content:   content.String,
+			FileURL:   fileURL.String,
+			FileName:  fileName.String,
+			Timestamp: createdAt,
+		})
+	}
+	for i, j := 0, len(history)-1; i < j; i, j = i+1, j-1 {
+		history[i], history[j] = history[j], history[i]
+	}
+
+	if len(history) > 0 {
+		out <- service.SocketEvent{
+			Type:    "history",
+			RoomID:  roomID,
+			History: history,
+		}
+	}
 }
 
 func (h *ChatHandler) broadcastOnlineUsers(roomID string) {

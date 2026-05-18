@@ -1,3 +1,6 @@
+// ============================================================
+// === PACKAGE & IMPORTS ===
+
 package service
 
 import (
@@ -8,9 +11,15 @@ import (
 	"github.com/yourname/chat-app-golang/internal/model"
 )
 
+// ============================================================
+// === INTERFACE & STRUCT ===
+
 type ChatService struct {
 	assistantService AIService
 }
+
+// ============================================================
+// === CONSTRUCTOR ===
 
 func NewChatService(assistantService AIService) *ChatService {
 	return &ChatService{
@@ -18,9 +27,10 @@ func NewChatService(assistantService AIService) *ChatService {
 	}
 }
 
+// ============================================================
+// === PUBLIC METHODS ===
+
 func (s *ChatService) ProcessMessage(ctx context.Context, msg model.Message) (model.Message, error) {
-	// Reserved for validations/filtering or persistence.
-	// For now we keep the message as-is so behavior stays simple.
 	_ = ctx
 	return msg, nil
 }
@@ -41,6 +51,9 @@ func (s *ChatService) AskAI(ctx context.Context, content string) (string, error)
 
 	return s.assistantService.GenerateReply(ctx, prompt)
 }
+
+// ============================================================
+// === PRIVATE HELPERS ===
 
 func sanitizeAIMention(content string) string {
 	prompt := strings.TrimSpace(strings.ReplaceAll(content, "@AI", ""))

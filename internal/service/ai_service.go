@@ -1,3 +1,6 @@
+// ============================================================
+// === PACKAGE & IMPORTS ===
+
 package service
 
 import (
@@ -13,42 +16,20 @@ import (
 	"time"
 )
 
+// ============================================================
+// === INTERFACE ===
+
 type AIService interface {
 	GenerateReply(ctx context.Context, prompt string) (string, error)
 }
+
+// ============================================================
+// === TYPES (request/response structs) ===
 
 type OpenRouterService struct {
 	apiKey string
 	model  string
 	client *http.Client
-}
-
-func NewOpenRouterService(apiKey, model string) *OpenRouterService {
-	cleanKey := strings.TrimSpace(apiKey)
-	cleanKey = strings.Trim(cleanKey, `"`)
-
-	cleanModel := strings.TrimSpace(model)
-	if cleanModel == "" {
-		cleanModel = "tencent/hy3-preview:free"
-	}
-
-	return &OpenRouterService{
-		apiKey: cleanKey,
-		model:  cleanModel,
-		client: &http.Client{
-			Timeout: 20 * time.Second,
-		},
-	}
-}
-
-func (s *OpenRouterService) GenerateReply(ctx context.Context, prompt string) (string, error) {
-	if s.apiKey == "" {
-		return "", errors.New("OpenRouter API key is empty")
-	}
-	if strings.TrimSpace(prompt) == "" {
-		return "", errors.New("prompt is empty")
-	}
-	return s.generateReply(ctx, prompt)
 }
 
 type openRouterRequest struct {
@@ -69,6 +50,43 @@ type openRouterResponse struct {
 		} `json:"message"`
 	} `json:"choices"`
 }
+
+// ============================================================
+// === CONSTRUCTOR ===
+
+func NewOpenRouterService(apiKey, model string) *OpenRouterService {
+	cleanKey := strings.TrimSpace(apiKey)
+	cleanKey = strings.Trim(cleanKey, `"`)
+
+	cleanModel := strings.TrimSpace(model)
+	if cleanModel == "" {
+		cleanModel = "tencent/hy3-preview:free"
+	}
+
+	return &OpenRouterService{
+		apiKey: cleanKey,
+		model:  cleanModel,
+		client: &http.Client{
+			Timeout: 20 * time.Second,
+		},
+	}
+}
+
+// ============================================================
+// === PUBLIC METHODS ===
+
+func (s *OpenRouterService) GenerateReply(ctx context.Context, prompt string) (string, error) {
+	if s.apiKey == "" {
+		return "", errors.New("OpenRouter API key is empty")
+	}
+	if strings.TrimSpace(prompt) == "" {
+		return "", errors.New("prompt is empty")
+	}
+	return s.generateReply(ctx, prompt)
+}
+
+// ============================================================
+// === PRIVATE METHODS ===
 
 func (s *OpenRouterService) generateReply(ctx context.Context, prompt string) (string, error) {
 	model := strings.TrimSpace(s.model)
@@ -141,7 +159,7 @@ func (s *OpenRouterService) generateReply(ctx context.Context, prompt string) (s
 	if parsed.Choices[0].Message.Content != nil {
 		reply = strings.TrimSpace(*parsed.Choices[0].Message.Content)
 	}
-	// Fallback to reasoning field for reasoning models (e.g. DeepSeek V4)
+	
 	if reply == "" {
 		reply = strings.TrimSpace(parsed.Choices[0].Message.Reasoning)
 	}
@@ -151,6 +169,9 @@ func (s *OpenRouterService) generateReply(ctx context.Context, prompt string) (s
 
 	return reply, nil
 }
+
+// ============================================================
+// === ERROR HELPERS ===
 
 func humanizeOpenRouterError(statusCode int, body []byte) error {
 	errText := strings.TrimSpace(string(body))

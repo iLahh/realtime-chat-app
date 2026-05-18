@@ -1,3 +1,6 @@
+// ============================================================
+// === PACKAGE & IMPORTS ===
+
 package main
 
 import (
@@ -13,6 +16,9 @@ import (
 	"github.com/yourname/chat-app-golang/internal/api"
 	"github.com/yourname/chat-app-golang/internal/service"
 )
+
+// ============================================================
+// === MAIN (entry point) ===
 
 func main() {
 	_ = godotenv.Load()
@@ -49,10 +55,12 @@ func main() {
 	}
 }
 
+// ============================================================
+// === SERVER SETUP ===
+
 func newServerMux(chatHandler *api.ChatHandler, userHandler *api.UserHandler) *http.ServeMux {
 	mux := http.NewServeMux()
 	docsDir := "docs"
-	docsFS := http.FileServer(http.Dir(docsDir))
 
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != "/" {
@@ -62,9 +70,15 @@ func newServerMux(chatHandler *api.ChatHandler, userHandler *api.UserHandler) *h
 		disableCache(w)
 		http.ServeFile(w, r, filepath.Join(docsDir, "index.html"))
 	})
-	// Keep static asset routes explicit so websocket/api routes stay predictable.
-	mux.Handle("/styles.css", docsFS)
-	mux.Handle("/app.js", docsFS)
+
+	mux.HandleFunc("/styles.css", func(w http.ResponseWriter, r *http.Request) {
+		disableCache(w)
+		http.ServeFile(w, r, filepath.Join(docsDir, "styles.css"))
+	})
+	mux.HandleFunc("/app.js", func(w http.ResponseWriter, r *http.Request) {
+		disableCache(w)
+		http.ServeFile(w, r, filepath.Join(docsDir, "app.js"))
+	})
 	mux.HandleFunc("/health", func(w http.ResponseWriter, _ *http.Request) {
 		_, _ = w.Write([]byte("ok"))
 	})
@@ -76,8 +90,10 @@ func newServerMux(chatHandler *api.ChatHandler, userHandler *api.UserHandler) *h
 	return mux
 }
 
+// ============================================================
+// === DATABASE ===
+
 func initDB(db *sql.DB) {
-	// Ensure id column has auto-increment default
 	fixIDQuery := `
 	DO $$
 	BEGIN
@@ -87,7 +103,9 @@ func initDB(db *sql.DB) {
 			CREATE SEQUENCE IF NOT EXISTS messages_id_seq;
 		END IF;
 	END $$;`
-	_, _ = db.Exec(fixIDQuery)
+	if _, err := db.Exec(fixIDQuery); err != nil {
+		log.Printf("database setup: failed creating sequence: %v", err)
+	}
 
 	query := `
 	CREATE TABLE IF NOT EXISTS messages (
@@ -101,14 +119,25 @@ func initDB(db *sql.DB) {
 		created_at TIMESTAMP DEFAULT NOW()
 	);`
 	if _, err := db.Exec(query); err != nil {
-		log.Printf("failed to create messages table: %v", err)
+		log.Printf("database setup: failed to create messages table: %v", err)
 	}
 
-	// Fix id column if it doesn't have a default
-	setDefaultQuery := `
-	ALTER TABLE messages 
-		ALTER COLUMN id SET DEFAULT nextval('messages_id_seq');`
-	_, _ = db.Exec(setDefaultQuery)
+	var dataType string
+	_ = db.QueryRow("SELECT data_type FROM information_schema.columns WHERE table_name = 'messages' AND column_name = 'id'").Scan(&dataType)
+
+	if dataType == "uuid" {
+		log.Printf("database setup: id column is a uuid, setting default to gen_random_uuid()")
+		setDefaultQuery := `ALTER TABLE messages ALTER COLUMN id SET DEFAULT gen_random_uuid();`
+		if _, err := db.Exec(setDefaultQuery); err != nil {
+			log.Printf("database setup: failed setting gen_random_uuid default: %v", err)
+		}
+	} else {
+		log.Printf("database setup: id column is '%s', setting serial sequence default", dataType)
+		setDefaultQuery := `ALTER TABLE messages ALTER COLUMN id SET DEFAULT nextval('messages_id_seq');`
+		if _, err := db.Exec(setDefaultQuery); err != nil {
+			log.Printf("database setup: failed setting default id sequence: %v", err)
+		}
+	}
 
 	alterQuery := `
 	ALTER TABLE messages 
@@ -118,9 +147,22 @@ func initDB(db *sql.DB) {
 		ADD COLUMN IF NOT EXISTS file_name TEXT;
 	`
 	if _, err := db.Exec(alterQuery); err != nil {
-		log.Printf("failed to alter messages table: %v", err)
+		log.Printf("database setup: failed to alter messages table: %v", err)
+	}
+
+	var hasUserID bool
+	_ = db.QueryRow("SELECT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'messages' AND column_name = 'user_id')").Scan(&hasUserID)
+	if hasUserID {
+		log.Printf("database setup: legacy user_id column found, making it nullable")
+		_, err := db.Exec("ALTER TABLE messages ALTER COLUMN user_id DROP NOT NULL;")
+		if err != nil {
+			log.Printf("database setup: failed to make user_id nullable: %v", err)
+		}
 	}
 }
+
+// ============================================================
+// === SERVICE BUILDER ===
 
 func buildOpenRouterService() *service.OpenRouterService {
 	apiKey := firstNonEmptyEnv("OPENROUTER_API_KEY")
@@ -131,28 +173,8 @@ func buildOpenRouterService() *service.OpenRouterService {
 	return service.NewOpenRouterService(apiKey, model)
 }
 
-func getEnv(key, fallback string) string {
-	value := os.Getenv(key)
-	if value == "" {
-		return fallback
-	}
-	return value
-}
-
-func firstNonEmptyEnv(keys ...string) string {
-	for _, key := range keys {
-		if value := strings.TrimSpace(os.Getenv(key)); value != "" {
-			return value
-		}
-	}
-	return ""
-}
-
-func disableCache(w http.ResponseWriter) {
-	w.Header().Set("Cache-Control", "no-store, no-cache, must-revalidate")
-	w.Header().Set("Pragma", "no-cache")
-	w.Header().Set("Expires", "0")
-}
+// ============================================================
+// === MIDDLEWARE ===
 
 func withCORS(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -192,4 +214,30 @@ func isAllowedOrigin(origin string) bool {
 		}
 	}
 	return false
+}
+
+func disableCache(w http.ResponseWriter) {
+	w.Header().Set("Cache-Control", "no-store, no-cache, must-revalidate")
+	w.Header().Set("Pragma", "no-cache")
+	w.Header().Set("Expires", "0")
+}
+
+// ============================================================
+// === ENV / UTILITY ===
+
+func getEnv(key, fallback string) string {
+	value := os.Getenv(key)
+	if value == "" {
+		return fallback
+	}
+	return value
+}
+
+func firstNonEmptyEnv(keys ...string) string {
+	for _, key := range keys {
+		if value := strings.TrimSpace(os.Getenv(key)); value != "" {
+			return value
+		}
+	}
+	return ""
 }

@@ -1,3 +1,6 @@
+// ============================================================
+// === PACKAGE & IMPORTS ===
+
 package service
 
 import (
@@ -6,14 +9,17 @@ import (
 	"time"
 )
 
+// ============================================================
+// === TYPES & STRUCTS ===
+
 type SocketEvent struct {
-	Type        string    `json:"type"`
-	RoomID      string    `json:"room_id,omitempty"`
-	UserID      string    `json:"user_id,omitempty"`
-	Username    string    `json:"username,omitempty"`
-	Content     string    `json:"content,omitempty"`
-	FileURL     string    `json:"file_url,omitempty"`
-	FileName    string    `json:"file_name,omitempty"`
+	Type        string        `json:"type"`
+	RoomID      string        `json:"room_id,omitempty"`
+	UserID      string        `json:"user_id,omitempty"`
+	Username    string        `json:"username,omitempty"`
+	Content     string        `json:"content,omitempty"`
+	FileURL     string        `json:"file_url,omitempty"`
+	FileName    string        `json:"file_name,omitempty"`
 	Typing      bool          `json:"typing,omitempty"`
 	OnlineUsers []string      `json:"online_users,omitempty"`
 	History     []SocketEvent `json:"history,omitempty"`
@@ -34,6 +40,9 @@ type clientMeta struct {
 	roomID   string
 }
 
+// ============================================================
+// === CONSTRUCTOR ===
+
 func NewSocketHub() *SocketHub {
 	return &SocketHub{
 		users:     make(map[string]string),
@@ -42,6 +51,9 @@ func NewSocketHub() *SocketHub {
 		clientRef: make(map[chan SocketEvent]clientMeta),
 	}
 }
+
+// ============================================================
+// === PUBLIC METHODS ===
 
 func (h *SocketHub) Register(userID, username, roomID string, ch chan SocketEvent) {
 	h.mu.Lock()
@@ -128,6 +140,9 @@ func (h *SocketHub) BroadcastRoom(roomID string, event SocketEvent) {
 		trySend(ch, event)
 	}
 }
+
+// ============================================================
+// === PRIVATE / HELPER METHODS ===
 
 func (h *SocketHub) onlineUsersLocked() []string {
 	users := make([]string, 0, len(h.users))
